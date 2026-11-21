@@ -1,0 +1,11 @@
+{
+  "name": "canary-thunderbird",
+  "version": "1.5.36",
+  "private": true,
+  "description": "Canary Thunderbird source, tests and offline release tooling",
+  "scripts": {
+    "test": "node --test extension/tests/*.test.cjs && python3 -m unittest discover -s tools/tests -v",
+    "build": "python3 tools/build_release.py",
+    "test:browser": "node extension/tests/browser.cjs"
+  }
+}

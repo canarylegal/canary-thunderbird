@@ -1,0 +1,5 @@
+Extension source and tests imported from canarycms isolated reviewed commit bad81ce238fdf06c46d712ce910ef15ca9b3d1a2. Runtime files match that reviewed commit except manifest update_url, which now uses GitHub Releases. Existing 1.5.36 release artifacts and tag remain unchanged. The standalone build must reproduce their exact XPI bytes.
+
+Imported: runtime allowlist, regression tests and helpers, staging utility and Linux protocol helper. Retired: ATN signing/submission, legacy web hosting/SMB deployment scripts, obsolete release orchestration, and historical reviewer materials. No CMS Git history or server application code imported.
+
+Server APIs, OAuth callback pages and web-bridge client remain in canarycms. API changes require testing both repositories together. Source licensing remains as documented in SOURCE-LICENSE.txt; no new licence grant is made.
