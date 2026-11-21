@@ -1,3 +1,5 @@
+Historical isolated verification report, captured before the authorized private repository push. Repository creation statements below describe that earlier verification stage. No release has been published.
+
 Canary Thunderbird 1.5.36 GitHub distribution preparation
 
 Result: PASS for isolated preparation and upgrade rehearsal. Nothing published.
