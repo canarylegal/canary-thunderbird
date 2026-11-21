@@ -1,0 +1,20 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');const path=require('node:path');
+const source=n=>fs.readFileSync(path.join(__dirname,'..',n),'utf8');const tick=()=>new Promise(setImmediate);
+function setup(){
+ const state={origin:'https://canary.example:8443',granted:true},handlers={},injected=[],registered=[];
+ const tabs=[{id:1,url:state.origin+'/matter'},{id:2,url:'https://canary.example:9443/matter'},{id:3,url:'http://canary.example/matter'},{id:4,url:'https://other.example/matter'},{id:5,url:state.origin+'/second'}];
+ const ext={storage:{local:{async get(){return {canaryApiOrigin:state.origin}}},onChanged:{addListener:f=>handlers.changed=f}},permissions:{async contains(){return state.granted},onAdded:{addListener:f=>handlers.added=f},onRemoved:{addListener:f=>handlers.removed=f}},contentScripts:{async register(o){registered.push(o);return {async unregister(){}}}},tabs:{async query(){return tabs},async get(id){return tabs.find(t=>t.id===id)},async executeScript(id,o){injected.push({id,...o})}}};
+ const ctx=vm.createContext({URL,console,canaryShared:{getGecko:()=>ext,normalizeOrigin:x=>new URL(x).origin,sitePermission:x=>'https://'+new URL(x).hostname+'/*'}});
+ return {state,handlers,injected,registered,tabs,ext,start(){vm.runInContext(source('site-permissions.js'),ctx)}};
+}
+test('startup recovers already-open exact-origin tabs, not other ports/hosts or HTTP',async()=>{const s=setup();s.start();await tick();assert.deepEqual(s.injected.map(x=>x.id),[1,5]);assert(s.injected.every(x=>x.file==='web-bridge.js'&&x.allFrames===false))});
+test('grant and regrant recover existing tabs without reload; revoke stops injection',async()=>{const s=setup();s.state.granted=false;s.start();await tick();assert.equal(s.injected.length,0);s.state.granted=true;s.handlers.added();await tick();assert.equal(s.injected.length,2);s.state.granted=false;s.handlers.removed();await tick();assert.equal(s.injected.length,2);s.state.granted=true;s.handlers.added();await tick();assert.equal(s.injected.length,4)});
+test('navigation and closed tabs cannot redirect injection or block other tabs',async()=>{const s=setup();s.ext.tabs.get=async id=>{if(id===1)throw Error('closed');return {id,url:'https://other.example/'}};s.start();await tick();assert.equal(s.injected.length,0);s.ext.tabs.get=async id=>s.tabs.find(t=>t.id===id);s.ext.tabs.executeScript=async id=>{if(id===1)throw Error('restricted');s.injected.push({id})};s.handlers.added();await tick();assert.deepEqual(s.injected.map(x=>x.id),[5])});
+test('origin or permission changes during reconciliation stop stale injection',async()=>{for(const change of ['origin','granted']){const s=setup();s.ext.tabs.query=async()=>{s.state[change]=change==='origin'?'https://other.example':false;return s.tabs};s.start();await tick();assert.equal(s.injected.length,0)}});
+function page(origin='https://canary.example:8443'){
+ const listeners=[],sent=[],posted=[];const win={addEventListener:(t,f)=>listeners.push(f),postMessage:m=>posted.push(m)};
+ const ctx=vm.createContext({URL,location:{protocol:'https:',origin,href:origin+'/'},window:win,messenger:{storage:{local:{get:async()=>({canaryApiOrigin:'https://canary.example:8443'})}},runtime:{sendMessage:async m=>{sent.push(m);return {ok:true}}}}});
+ return {ctx,listeners,sent,posted,win,inject(){vm.runInContext(source('web-bridge.js'),ctx)}};
+}
+test('concurrent and repeated injection installs one listener and forwards once',async()=>{const p=page();p.inject();p.inject();await tick();p.inject();await tick();assert.equal(p.listeners.length,1);assert.equal(p.posted.length,1);p.listeners[0]({source:p.win,data:{type:'canary-tb-open-eml',requestId:'one',url:'https://canary.example:8443/api/files/1/eml-open?token=synthetic'}});await tick();assert.equal(p.sent.length,1)});
+test('content-side exact-origin check prevents injection after same-host port navigation',async()=>{const p=page('https://canary.example:9443');p.inject();await tick();assert.equal(p.listeners.length,0);assert.equal(p.posted.length,0)});
