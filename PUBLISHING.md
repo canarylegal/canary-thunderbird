@@ -1,7 +1,7 @@
 # Publication procedure — release unpublished
 
 1. Confirm the public repository name and accompanying stable-release licence. The current development licence is preserved for provenance; it does not supply production terms.
-2. The separate repository has been created privately with Actions disabled. Before any public distribution, obtain explicit authorization to change visibility and publish, and review repository protection. Keep Actions disabled; releases require no jobs or deployment.
+2. The separate repository is public with Actions disabled; visibility was explicitly authorized. GitHub Release publication remains unauthorized. Before publishing a release, obtain explicit authorization and review repository protection. Keep Actions disabled; releases require no jobs or deployment.
 3. Prepare a draft release tagged `v1.5.36`. Upload exactly the four files from `releases/1.5.36`: the XPI, updates.json, provenance.json and SHA256SUMS.txt. Include the reviewed release notes. Exclude internal test evidence and development profiles. A draft release does not make the stable update feed publicly usable.
 4. Verify all asset names, authenticated draft download hashes and feed URLs. Publish the completed release and explicitly mark it Latest only when authorized. For subsequent releases, leave the previous Latest release serving updates while the new release remains a draft.
 5. Download the public Latest feed and versioned XPI, verify SHA256SUMS and update_hash, then check an isolated existing installation through Thunderbird's updater. This live delivery check is not covered by the local rehearsal.

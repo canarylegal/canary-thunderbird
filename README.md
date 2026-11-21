@@ -1,6 +1,6 @@
 # Canary — file to matter
 
-Unpublished GitHub distribution candidate 1.5.36. Private repository: `canarylegal/canary-thunderbird`. This repository contains release packages and packaging tools, without the private Canary CMS repository or its history. The GitHub repository is private, Actions are disabled, and no release has been published. The configured update feed is not live while release assets remain unpublished.
+Unpublished GitHub distribution candidate 1.5.36. Public distribution repository: `canarylegal/canary-thunderbird`. This repository contains release packages and packaging tools, without the private Canary CMS repository or its history. The GitHub repository is public, Actions are disabled, and no GitHub Release has been published. The XPI is available in the repository, but the configured update feed is not live until GitHub Release assets are published. Extension development source and tests still reside in canarycms; this repository currently holds distribution artifacts and packaging tools.
 
 ## Install and connect
 
