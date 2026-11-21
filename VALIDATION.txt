@@ -1,0 +1,28 @@
+Canary Thunderbird 1.5.36 GitHub distribution preparation
+
+Result: PASS for isolated preparation and upgrade rehearsal. Nothing published.
+Proposed repository: canarylegal/canary-thunderbird. A read-only GitHub lookup returned 404; no remote was created or pushed. The prepared repository is independent local Git history, with no private CMS history.
+Source: bad81ce238fdf06c46d712ce910ef15ca9b3d1a2
+XPI SHA256: 47e7fe8d12bb44e8af89c9e92c8980d1cea57a1c61bb31e063e73b8652eb9094
+
+Native verification: 13 checks passed on each of Thunderbird 128.0 and 159.0.
+- Manual installation over the existing listed 1.5.35 package preserves synthetic storage and optional permissions.
+- Native automatic updater discovers, downloads and installs 1.5.36 via the production GitHub URL layout and HTTPS redirect chain.
+- A synthetic 1.5.35 GitHub-channel baseline was used only in isolated profiles, never as a release asset.
+- Unavailable feed leaves the installation intact; lower versions are ignored.
+- A corrupted XPI is rejected with an explicit native hash mismatch error; a subsequent valid update succeeds.
+- Installed XPI bytes match the release asset exactly.
+- Sign-in token, configured origin, synthetic state marker and optional grants survive upgrade and restart.
+- The extension runs after restart and retains its GitHub feed. Same-version checks do not download again.
+- Test namespaces have no outbound network routes. GitHub/CDN domains resolve to the private HTTPS fixture only. The fixture CA and relaxed built-in-CA test preference exist only in synthetic profiles, never in the release.
+
+Packaging review: 12 checks passed, including unchanged runtime inventory and bytes, manifest-only update_url difference, feed version/hash/link/minimum-version consistency, provenance, checksums, byte-for-byte reproducibility and absence of CI jobs.
+Official Thunderbird linter: exactly one expected ATN-only update-url finding; no other findings. This self-hosted package is intentionally not eligible for ATN submission.
+
+Limits and publication prerequisites:
+- The repository, feed and assets are not live. Actual GitHub availability/redirects must be verified after authorized publication. This test does not claim a live GitHub-hosted update succeeded.
+- Confirm the stable add-on licence before publication; the source provides only a development licence. No new licence was invented.
+- Existing ATN-channel users need a one-time manual XPI installation to select this update channel.
+- Restoring the previous Latest release stops discovery of a bad update but does not downgrade users already updated. Recover with a reviewed higher version.
+
+Dev container IDs, images, start times and restart counts are unchanged. CANARY_BACKGROUND_JOBS_ENABLED=0 remains set. Source review checkout is clean. No DocuSign, deployment, scheduled job, ATN submission, GitHub repository creation or publication was performed.

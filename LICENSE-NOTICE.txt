@@ -1,0 +1,3 @@
+Copyright 2026 Colin James McWilliams. All rights reserved.
+Unpublished release preparation; no new licence grant is made here.
+The source checkout supplied the development-only licence reproduced in SOURCE-LICENSE.txt. Confirm the licence accompanying this stable add-on release before public distribution. Do not infer an open-source or production licence from GitHub hosting.

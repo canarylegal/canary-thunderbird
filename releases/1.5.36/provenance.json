@@ -1,0 +1,12 @@
+{
+  "version": "1.5.36",
+  "source_commit": "bad81ce238fdf06c46d712ce910ef15ca9b3d1a2",
+  "input_sha256": "e9e7b80291eb22c3ee8a759f0664c4bf233469522fb4fc171ba57b9b216491c8",
+  "xpi_sha256": "47e7fe8d12bb44e8af89c9e92c8980d1cea57a1c61bb31e063e73b8652eb9094",
+  "repository": "canarylegal/canary-thunderbird",
+  "update_url": "https://github.com/canarylegal/canary-thunderbird/releases/latest/download/updates.json",
+  "runtime_changes": [
+    "manifest.json: gecko.update_url"
+  ],
+  "published": false
+}

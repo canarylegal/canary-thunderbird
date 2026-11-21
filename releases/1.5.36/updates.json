@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "canary-file@canarylegal.co.uk": {
+      "updates": [
+        {
+          "version": "1.5.36",
+          "update_link": "https://github.com/canarylegal/canary-thunderbird/releases/download/v1.5.36/canary-thunderbird-1.5.36.xpi",
+          "update_hash": "sha256:47e7fe8d12bb44e8af89c9e92c8980d1cea57a1c61bb31e063e73b8652eb9094",
+          "applications": {
+            "gecko": {
+              "strict_min_version": "128.0"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
