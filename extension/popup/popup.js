@@ -50,6 +50,7 @@
   let allCases = []
   let selectedCaseId = ''
   let linkedCaseId = ''
+  let filingLookupGeneration = 0
   /** Last message id we refreshed the filing banner for (context filing reuses one window). */
   let contextFilingLoadedForMessageId = null
   /** If true, user opened “Server & sign-in” while a session is valid. When not signed in, the server block is always shown. */
@@ -354,11 +355,12 @@
     return { mbox, uid }
   }
 
-  async function apiGetLinkedCase(token, origin, internetMessageId, imapRefs) {
+  async function apiGetLinkedCase(token, origin, internetMessageId, imapRefs, offset = 0) {
     const res = await globalThis.canaryShared.secureFetch(apiRoot(origin) + '/mail-plugin/linked-case', {
       method: 'POST',
       headers: jsonAuthHeaders(token),
       body: JSON.stringify({
+        offset,
         outlook_item_id: null,
         internet_message_id: internetMessageId || null,
         source_imap_mbox: (imapRefs && imapRefs.mbox) || null,
@@ -646,15 +648,17 @@
    * @param {string} token
    * @param {string} origin
    */
-  async function refreshLinkedCaseBanner(ext, token, origin) {
+  async function refreshLinkedCaseBanner(ext, token, origin, offset = 0) {
+    const generation = ++filingLookupGeneration
     const el = $('linked-case-line')
     if (!el) return
     if (!token || !origin) {
       setLinkedCaseLineEl(el, { text: '—', state: 'muted' })
       return
     }
-    setLinkedCaseLineEl(el, { text: 'Loading matter…', state: 'muted' })
+    if (!offset) setLinkedCaseLineEl(el, { text: 'Checking possible email copies…', state: 'muted' })
     const got = await getSingleMessageHeaderOrError(ext)
+    if (generation !== filingLookupGeneration) return
     if (got.error) {
       linkedCaseId = ''
       setCaseSelection('', '')
@@ -695,31 +699,41 @@
       setCaseSelection('', '')
       renderCaseResults()
       setLinkedCaseLineEl(el, {
-        text: 'This message has no Message-ID header and no IMAP reference, so Canary cannot match it to a prior filing.',
+        text: 'This message has no usable Message-ID. Choose a matter explicitly to file it.',
         state: 'warn',
       })
       return
     }
     try {
-      const body = await apiGetLinkedCase(token, origin, mid, imapRefs)
-      const lc = body && body.linked_case
-      if (lc && lc.id) {
-        linkedCaseId = String(lc.id)
-        setCaseSelection(linkedCaseId, matterLabel(lc))
-        setLinkedCaseLineEl(el, {
-          text: 'Filed in Canary: ' + matterLabel(lc),
-          state: 'ok',
-        })
-      } else {
-        linkedCaseId = ''
-        setCaseSelection('', '')
-        setLinkedCaseLineEl(el, {
-          text: 'Not found in Canary yet (or no access) — you can file it to a matter below.',
-          state: 'muted',
-        })
+      const body = await apiGetLinkedCase(token, origin, mid, imapRefs, offset)
+      if (generation !== filingLookupGeneration) return
+      linkedCaseId = ''
+      const matches = body && Array.isArray(body.matches) ? body.matches : []
+      if (!offset) setLinkedCaseLineEl(el, {
+        text: matches.length
+          ? 'Possible email copies — verify before choosing a matter. You can also file to another matter.'
+          : 'No confirmed filing location. Choose a matter below to file this message.',
+        state: matches.length ? 'warn' : 'muted',
+      })
+      for (const old of el.querySelectorAll('.filing-more')) old.remove()
+      for (const match of matches) {
+        const row = document.createElement('span'); row.style.display = 'block'
+        const label = document.createElement('span')
+        label.textContent = matterLabel(match) + ' — ' + (match.folder_path || 'Root folder') + ' — ' + match.file_name + ' '
+        const choose = document.createElement('button')
+        choose.type = 'button'; choose.textContent = 'Choose this matter'
+        choose.onclick = () => { setCaseSelection(String(match.id), matterLabel(match)); void renderCaseResults() }
+        row.append(label, choose); el.append(row)
+      }
+      if (body && body.next_offset != null) {
+        const more = document.createElement('button')
+        more.type = 'button'; more.className = 'filing-more'; more.textContent = 'Show more possible copies'
+        more.onclick = () => { more.disabled = true; void refreshLinkedCaseBanner(ext, token, origin, body.next_offset) }
+        el.append(more)
       }
       void renderCaseResults()
     } catch (e) {
+      if (generation !== filingLookupGeneration) return
       linkedCaseId = ''
       setCaseSelection('', '')
       renderCaseResults()

@@ -5,6 +5,7 @@
   const VIEWED_KEY = 'canary_last_viewed_filing_context'
 
   async function cacheContextForMessage(ext, message) {
+    await ext.storage.session.remove(VIEWED_KEY)
     if (!message || message.id == null) return
     const shared = sh()
     if (!shared) return

@@ -594,60 +594,9 @@
     return null
   }
 
-  async function fetchLinkedCase(token, origin, ext, header) {
-    const mid = header && header.headerMessageId ? String(header.headerMessageId).trim() : ''
-    let imapRefs = { mbox: '', uid: '' }
-    if (!mid) {
-      imapRefs = await resolveImapRefs(ext, header)
-    }
-    const res = await secureFetch(apiRoot(origin) + '/mail-plugin/linked-case', {
-      method: 'POST',
-      headers: jsonAuthHeaders(token),
-      body: JSON.stringify({
-        outlook_item_id: null,
-        internet_message_id: mid || null,
-        source_imap_mbox: imapRefs.mbox || null,
-        source_imap_uid: imapRefs.uid || null,
-      }),
-    })
-    const body = await res.json().catch(function () {
-      return null
-    })
-    if (!res.ok || !body || !body.linked_case || !body.linked_case.id) return null
-    const lc = body.linked_case
-    return {
-      found: true,
-      case_id: lc.id,
-      file_id: null,
-      folder_path: '',
-      case_number: lc.case_number,
-      client_name: lc.client_name,
-      matter_description: lc.matter_description,
-    }
-  }
-
-  async function fetchMessageContext(token, origin, ext, header) {
-    const mid = header && header.headerMessageId ? String(header.headerMessageId).trim() : ''
-    let imapRefs = { mbox: '', uid: '' }
-    if (!mid) {
-      imapRefs = await resolveImapRefs(ext, header)
-    }
-    const res = await secureFetch(apiRoot(origin) + '/mail-plugin/message-context', {
-      method: 'POST',
-      headers: jsonAuthHeaders(token),
-      body: JSON.stringify({
-        outlook_item_id: null,
-        internet_message_id: mid || null,
-        source_imap_mbox: imapRefs.mbox || null,
-        source_imap_uid: imapRefs.uid || null,
-      }),
-    })
-    const body = await res.json().catch(function () {
-      return null
-    })
-    if (!res.ok || !body || !body.found || !body.case_id) return null
-    return body
-  }
+  // Legacy callers must not convert identifier hints into an automatic matter.
+  async function fetchLinkedCase() { return null }
+  async function fetchMessageContext() { return null }
 
   async function fetchPendingSend(token, origin) {
     const res = await secureFetch(apiRoot(origin) + '/mail-plugin/pending-send', {
