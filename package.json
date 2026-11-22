@@ -1,6 +1,6 @@
 {
   "name": "canary-thunderbird",
-  "version": "1.5.36",
+  "version": "1.5.37",
   "private": true,
   "description": "Canary Thunderbird source, tests and offline release tooling",
   "scripts": {

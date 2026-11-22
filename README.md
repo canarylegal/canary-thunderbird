@@ -1,10 +1,10 @@
 # Canary — file to matter
 
-Unpublished GitHub distribution candidate 1.5.36. Source and distribution repository: `canarylegal/canary-thunderbird`. This repository owns the Thunderbird extension source, regression tests, release packages and offline build tools. It contains no Canary CMS server source or Git history. The GitHub repository is public, Actions are disabled, and no GitHub Release has been published. The XPI is available in the repository, but the configured update feed is not live until GitHub Release assets are published. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
+Development candidate 1.5.37; requires the coordinated Canary CMS authorization callback update. Source and distribution repository: `canarylegal/canary-thunderbird`. This repository owns the Thunderbird extension source, regression tests, release packages and offline build tools. It contains no Canary CMS server source or Git history. The GitHub repository is public, Actions are disabled, and no GitHub Release has been published. The archived 1.5.36 XPI remains in the repository. Build the current review candidate with `npm run build`; the configured update feed is not live until GitHub Release assets are published. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
 
 ## Install and connect
 
-In Thunderbird 128 or later, open Add-ons and Themes, select the gear menu, then Install Add-on From File and select `canary-thunderbird-1.5.36.xpi`. Open Canary from the toolbar, enter your HTTPS Canary site, grant access to that site and connect. Open a message and use Canary to choose its matter and file it. In a compose window, use Canary to attach matter files or select the matter for filing on send. Only grant access to sites you trust.
+In Thunderbird 128 or later, open Add-ons and Themes, select the gear menu, then Install Add-on From File and select `canary-thunderbird-1.5.37.xpi`. Open Canary from the toolbar, enter your HTTPS Canary site, grant access to that site and connect. After approving in your browser, select **Open Thunderbird** to finish connecting. Open a message and use Canary to choose its matter and file it. In a compose window, use Canary to attach matter files or select the matter for filing on send. Only grant access to sites you trust.
 
 ## Existing installations
 

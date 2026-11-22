@@ -250,7 +250,7 @@
   function getPluginAuthCallbackUrl(origin) {
     const base = normalizeOrigin(origin)
     if (!base) throw new Error('Enter your Canary site URL first.')
-    // Browser sign-in cannot redirect to moz-extension:// from script — use HTTPS callback; add-in polls by state.
+    // The HTTPS callback returns the one-time code through the ext+canary handler.
     return base + '/connect/mail-plugin/callback'
   }
 
@@ -283,33 +283,13 @@
     return String(token)
   }
 
-  async function waitForPluginToken(origin, client, expectedState, timeoutMs) {
-    const deadline = Date.now() + (timeoutMs || 300000)
-    while (Date.now() < deadline) {
-      try {
-        return await exchangePluginToken(origin, client, expectedState, null)
-      } catch (e) {
-        const msg = e && e.message ? String(e.message) : ''
-        if (
-          msg.indexOf('Invalid or expired') >= 0 ||
-          msg.indexOf('Authorization code is required') >= 0
-        ) {
-          await sleep(400)
-          continue
-        }
-        throw e
-      }
-    }
-    throw new Error('Authorization timed out. Finish sign-in in your browser, then try Connect to Canary again.')
-  }
-
   async function waitForPluginAuthPending(ext, expectedState, timeoutMs) {
     const deadline = Date.now() + (timeoutMs || 300000)
     while (Date.now() < deadline) {
       const st = await ext.storage.local.get([PLUGIN_AUTH_PENDING_KEY, PLUGIN_AUTH_STATE_KEY])
       const pending = st && st[PLUGIN_AUTH_PENDING_KEY]
       const savedState = st && st[PLUGIN_AUTH_STATE_KEY]
-      if (pending && savedState === expectedState && pending.state === expectedState) {
+      if (pending && savedState === expectedState && pending.state === expectedState && pending.code) {
         return pending
       }
       await sleep(400)
@@ -330,19 +310,28 @@
     await ext.storage.local.set({ [PLUGIN_AUTH_STATE_KEY]: state })
     await ext.storage.local.remove(PLUGIN_AUTH_PENDING_KEY)
     const connectUrl = buildPluginConnectUrl(originNorm, client, state, redirectUri)
-    if (!ext.windows || typeof ext.windows.openDefaultBrowser !== 'function') {
-      throw new Error('Cannot open your default browser from this mail client.')
+    try {
+      if (!ext.windows || typeof ext.windows.openDefaultBrowser !== 'function') {
+        throw new Error('Cannot open your default browser from this mail client.')
+      }
+      await ext.windows.openDefaultBrowser(connectUrl)
+      const pending = await waitForPluginAuthPending(ext, state, 300000)
+      if (pending.origin !== originNorm) throw new Error('Authorization came from a different Canary site.')
+      const token = await exchangePluginToken(originNorm, client, state, pending.code)
+      const current = await ext.storage.local.get([ORIGIN_KEY, PLUGIN_AUTH_STATE_KEY])
+      if (normalizeOrigin(current[ORIGIN_KEY]) !== originNorm || current[PLUGIN_AUTH_STATE_KEY] !== state ||
+          !await ext.permissions.contains({ origins: [sitePermission(originNorm)] })) {
+        throw new Error('The Canary site or authorization changed. Connect again.')
+      }
+      await ext.storage.local.set({ [JWT_KEY]: token, [ORIGIN_KEY]: originNorm })
+      await ext.storage.local.remove([PLUGIN_AUTH_PENDING_KEY, PLUGIN_AUTH_STATE_KEY])
+      return token
+    } finally {
+      const saved = await ext.storage.local.get(PLUGIN_AUTH_STATE_KEY)
+      if (saved[PLUGIN_AUTH_STATE_KEY] === state) {
+        await ext.storage.local.remove([PLUGIN_AUTH_PENDING_KEY, PLUGIN_AUTH_STATE_KEY])
+      }
     }
-    await ext.windows.openDefaultBrowser(connectUrl)
-    const token = await waitForPluginToken(originNorm, client, state, 300000)
-    const current = await ext.storage.local.get([ORIGIN_KEY, PLUGIN_AUTH_STATE_KEY])
-    if (normalizeOrigin(current[ORIGIN_KEY]) !== originNorm || current[PLUGIN_AUTH_STATE_KEY] !== state ||
-        !await ext.permissions.contains({ origins: [sitePermission(originNorm)] })) {
-      throw new Error('The Canary site or authorization changed. Connect again.')
-    }
-    await ext.storage.local.set({ [JWT_KEY]: token, [ORIGIN_KEY]: originNorm })
-    await ext.storage.local.remove([PLUGIN_AUTH_PENDING_KEY, PLUGIN_AUTH_STATE_KEY])
-    return token
   }
 
   function formatComposeRecipients(recipients) {

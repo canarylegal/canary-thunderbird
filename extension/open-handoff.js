@@ -39,6 +39,31 @@
       })
   }
 
+  // A browser hands back only the authorization code, never a staff access token.
+  let handoff
+  try { handoff = new URL(decodeURIComponent(location.hash.slice(1))) } catch (_) {}
+  if (handoff && handoff.protocol === 'ext+canary:' && handoff.pathname === 'auth') {
+    void (async function () {
+      try {
+        const origin = handoff.searchParams.get('origin')
+        const state = handoff.searchParams.get('state')
+        const code = handoff.searchParams.get('code')
+        const saved = await ext.storage.local.get(['canaryApiOrigin', 'canaryPluginAuthState', 'canaryPluginAuthPending'])
+        const site = new URL(origin)
+        if (site.protocol !== 'https:' || site.origin !== origin || origin !== saved.canaryApiOrigin ||
+            !state || state !== saved.canaryPluginAuthState || saved.canaryPluginAuthPending ||
+            !code || !/^[A-Za-z0-9_-]{32,256}$/.test(code) ||
+            !await ext.permissions.contains({origins: ['https://' + site.hostname + '/*']})) {
+          throw new Error('This connection request is invalid or expired. Start Connect to Canary again.')
+        }
+        await ext.storage.local.set({canaryPluginAuthPending: {origin, state, code}})
+        setStatus('Returning authorization to Canary…')
+        await closeThisTab()
+      } catch (error) { setStatus(error.message || 'Could not connect to Canary.') }
+    })()
+    return
+  }
+
   setStatus('Opening from Canary…')
   void pollPending()
     .then(function () {
