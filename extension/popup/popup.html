@@ -61,10 +61,12 @@
 
         <div id="panel-pre-auth" class="panel">
           <p class="muted" style="margin-top: 0">
-            Opens Canary sign-in in your default browser (passkeys and authenticator apps supported). After you authorise, return to Thunderbird — the add-on connects automatically.
+            Opens Canary sign-in in your default browser (passkeys and authenticator apps supported). After you authorise, return to Thunderbird — the add-on connects automatically. Canary may ask you to verify with a passkey or authenticator even if you are already signed in.
           </p>
           <p id="login-err" class="inline-err" hidden></p>
           <button type="button" class="primary" id="btn-connect">Connect to Canary…</button>
+          <button type="button" class="ghost" id="btn-connect-cancel">Cancel sign-in</button>
+          <p class="hint">Closed the browser page? Connect again to start a fresh sign-in.</p>
         </div>
 
         <div id="panel-post-auth" class="panel panel-hidden">

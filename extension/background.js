@@ -255,36 +255,40 @@
       })()
       return true
     }
+    if (message && message.type === 'canary-plugin-connect-cancel') {
+      void (async function () {
+        const attempt = globalThis.__canaryPluginConnectAttempt
+        if (attempt) {
+          attempt.controller.abort()
+          await attempt.promise.catch(function () {})
+        }
+        sendResponse({ ok: true })
+      })()
+      return true
+    }
     if (message && message.type === 'canary-plugin-connect') {
-      // Must run in the background script: the toolbar popup is destroyed when the user
-      // switches to the browser to authorize, which previously aborted the token wait.
+      // Own the attempt in the background so closing the popup is safe. A new
+      // explicit Connect cancels and drains the previous attempt before restarting.
+      const previous = globalThis.__canaryPluginConnectAttempt
+      const attempt = { controller: new AbortController(), promise: null }
+      globalThis.__canaryPluginConnectAttempt = attempt
+      if (previous) previous.controller.abort()
+      attempt.promise = (async function () {
+        if (previous) await previous.promise.catch(function () {})
+        if (attempt.controller.signal.aborted) throw new Error('Canary sign-in cancelled. You can connect again.')
+        const sh = globalThis.canaryShared
+        if (!sh || typeof sh.runPluginConnect !== 'function') throw new Error('Connect helper not loaded in background.')
+        return sh.runPluginConnect(ext, message.origin, message.client || 'thunderbird', attempt.controller.signal)
+      })()
       void (async function () {
         try {
-          const sh = globalThis.canaryShared
-          if (!sh || typeof sh.runPluginConnect !== 'function') {
-            sendResponse({ ok: false, detail: 'Connect helper not loaded in background.' })
-            return
-          }
-          if (globalThis.__canaryPluginConnectPromise) {
-            sendResponse({
-              ok: false,
-              detail:
-                'A Canary sign-in is already in progress. Finish authorizing in your browser, then reopen Canary.',
-            })
-            return
-          }
-          const origin = message.origin
-          const client = message.client || 'thunderbird'
-          globalThis.__canaryPluginConnectPromise = sh.runPluginConnect(ext, origin, client)
-          try {
-            await globalThis.__canaryPluginConnectPromise
-            sendResponse({ ok: true })
-          } finally {
-            globalThis.__canaryPluginConnectPromise = null
-          }
+          await attempt.promise
+          sendResponse({ ok: true })
         } catch (e) {
-          globalThis.__canaryPluginConnectPromise = null
-          sendResponse({ ok: false, detail: (e && e.message) || String(e) })
+          sendResponse({ ok: false, detail: attempt.controller.signal.aborted
+            ? 'Canary sign-in cancelled. You can connect again.' : (e && e.message) || String(e) })
+        } finally {
+          if (globalThis.__canaryPluginConnectAttempt === attempt) globalThis.__canaryPluginConnectAttempt = null
         }
       })()
       return true

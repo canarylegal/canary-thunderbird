@@ -1219,6 +1219,15 @@
 
     const connectBtn = $('btn-connect')
     if (connectBtn) connectBtn.onclick = () => void connectToCanary()
+    const cancelConnectBtn = $('btn-connect-cancel')
+    if (cancelConnectBtn) cancelConnectBtn.onclick = () => {
+      ext.runtime.sendMessage({ type: 'canary-plugin-connect-cancel' }, function () {
+        if (ext.runtime.lastError) { loginShowErr(ext.runtime.lastError.message); return }
+        loginShowErr('')
+        out($('out'), 'Sign-in cancelled. Connect again when ready.', false)
+        if (connectBtn) connectBtn.disabled = false
+      })
+    }
 
     const btnLogout = $('btn-logout')
     if (btnLogout) {

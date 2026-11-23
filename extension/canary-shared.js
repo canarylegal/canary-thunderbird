@@ -263,13 +263,14 @@
     return url.toString()
   }
 
-  async function exchangePluginToken(origin, client, state, code) {
+  async function exchangePluginToken(origin, client, state, code, signal) {
     const payload = { client: client, state: state }
     if (code) payload.code = code
     const res = await secureFetch(apiRoot(origin) + '/auth/plugin/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
+      signal,
     })
     const body = await res.json().catch(function () {
       return null
@@ -283,12 +284,19 @@
     return String(token)
   }
 
-  async function waitForPluginAuthPending(ext, expectedState, timeoutMs) {
+  function checkConnectCancelled(signal) {
+    if (signal && signal.aborted) throw new Error('Canary sign-in cancelled. You can connect again.')
+  }
+
+  async function waitForPluginAuthPending(ext, expectedState, timeoutMs, signal) {
     const deadline = Date.now() + (timeoutMs || 300000)
     while (Date.now() < deadline) {
+      checkConnectCancelled(signal)
       const st = await ext.storage.local.get([PLUGIN_AUTH_PENDING_KEY, PLUGIN_AUTH_STATE_KEY])
       const pending = st && st[PLUGIN_AUTH_PENDING_KEY]
       const savedState = st && st[PLUGIN_AUTH_STATE_KEY]
+      checkConnectCancelled(signal)
+      if (savedState !== expectedState) throw new Error('The authorization changed. Connect again.')
       if (pending && savedState === expectedState && pending.state === expectedState && pending.code) {
         return pending
       }
@@ -297,7 +305,8 @@
     throw new Error('Authorization timed out. Finish sign-in in your browser, then try Connect to Canary again.')
   }
 
-  async function runPluginConnect(ext, origin, client) {
+  async function runPluginConnect(ext, origin, client, signal) {
+    checkConnectCancelled(signal)
     const originNorm = normalizeOrigin(origin)
     if (!originNorm) throw new Error('Enter your Canary site URL first.')
     const saved = await ext.storage.local.get(ORIGIN_KEY)
@@ -305,6 +314,7 @@
         !await ext.permissions.contains({ origins: [sitePermission(originNorm)] })) {
       throw new Error('Allow this Canary site using Test connection before signing in.')
     }
+    checkConnectCancelled(signal)
     const state = randomPluginState()
     const redirectUri = getPluginAuthCallbackUrl(originNorm)
     await ext.storage.local.set({ [PLUGIN_AUTH_STATE_KEY]: state })
@@ -314,15 +324,17 @@
       if (!ext.windows || typeof ext.windows.openDefaultBrowser !== 'function') {
         throw new Error('Cannot open your default browser from this mail client.')
       }
+      checkConnectCancelled(signal)
       await ext.windows.openDefaultBrowser(connectUrl)
-      const pending = await waitForPluginAuthPending(ext, state, 300000)
+      const pending = await waitForPluginAuthPending(ext, state, 300000, signal)
       if (pending.origin !== originNorm) throw new Error('Authorization came from a different Canary site.')
-      const token = await exchangePluginToken(originNorm, client, state, pending.code)
+      const token = await exchangePluginToken(originNorm, client, state, pending.code, signal)
       const current = await ext.storage.local.get([ORIGIN_KEY, PLUGIN_AUTH_STATE_KEY])
       if (normalizeOrigin(current[ORIGIN_KEY]) !== originNorm || current[PLUGIN_AUTH_STATE_KEY] !== state ||
           !await ext.permissions.contains({ origins: [sitePermission(originNorm)] })) {
         throw new Error('The Canary site or authorization changed. Connect again.')
       }
+      checkConnectCancelled(signal)
       await ext.storage.local.set({ [JWT_KEY]: token, [ORIGIN_KEY]: originNorm })
       await ext.storage.local.remove([PLUGIN_AUTH_PENDING_KEY, PLUGIN_AUTH_STATE_KEY])
       return token
