@@ -3,7 +3,7 @@ const root=path.resolve(__dirname,'..');
 function setup(origin='https://canary.example.org'){
  const data={canaryApiOrigin:origin,canary_jwt:'synthetic-token'},calls=[],requests=[];let granted=true;
  const ext={storage:{local:{async get(keys){return Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,data[k]]))},async set(v){Object.assign(data,v)},async remove(keys){for(const k of [].concat(keys))delete data[k]}}},permissions:{async contains(){return granted},request(p){requests.push(p);return Promise.resolve(granted)}},windows:{async openDefaultBrowser(url){calls.push({browser:url});data.canaryPluginAuthPending={origin:new URL(url).origin,state:new URL(url).searchParams.get("state"),code:"a".repeat(43)}}}};
- const ctx=vm.createContext({URL,Headers,Blob,FormData,crypto:require('node:crypto').webcrypto,console,setTimeout,fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>({id:'file-1',access_token:'new-token'})}},messenger:ext});
+ const ctx=vm.createContext({URL,Headers,Blob,FormData,clearTimeout,crypto:require('node:crypto').webcrypto,console,setTimeout,fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>({id:'file-1',access_token:'new-token'})}},messenger:ext});
  vm.runInContext(fs.readFileSync(path.join(root,'canary-shared.js'),'utf8'),ctx);
  return {sh:ctx.canaryShared,ctx,ext,data,calls,requests,setGranted:v=>granted=v};
 }

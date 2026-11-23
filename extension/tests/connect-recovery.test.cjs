@@ -3,7 +3,7 @@ const source=n=>fs.readFileSync(path.join(__dirname,'..',n),'utf8'),tick=()=>new
 function setup(){
  const data={canaryApiOrigin:'https://canary.example.org'},opened=[];let handler,fetcher=async()=>({ok:true,json:async()=>({access_token:'synthetic-token'})})
  const ext={runtime:{onMessage:{addListener:f=>handler=f}},storage:{local:{async get(keys){return Object.fromEntries([].concat(keys).map(k=>[k,data[k]]))},async set(v){Object.assign(data,v)},async remove(keys){for(const k of [].concat(keys))delete data[k]}}},permissions:{contains:async()=>true},windows:{openDefaultBrowser:async url=>opened.push(url)}}
- const context=vm.createContext({URL,Headers,Blob,FormData,AbortController,crypto:require('node:crypto').webcrypto,console,setTimeout:f=>setImmediate(f),fetch:(...args)=>fetcher(...args),messenger:ext})
+ const context=vm.createContext({URL,Headers,Blob,FormData,clearTimeout,AbortController,crypto:require('node:crypto').webcrypto,console,setTimeout:f=>setImmediate(f),fetch:(...args)=>fetcher(...args),messenger:ext})
  vm.runInContext(source('canary-shared.js'),context);vm.runInContext(source('background.js'),context)
  function send(type='canary-plugin-connect'){return new Promise(resolve=>handler({type,origin:data.canaryApiOrigin},{},resolve))}
  function handoff(index=opened.length-1){const u=new URL(opened[index]);data.canaryPluginAuthPending={origin:u.origin,state:u.searchParams.get('state'),code:'a'.repeat(43)}}

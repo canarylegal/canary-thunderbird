@@ -105,12 +105,18 @@
   function healthUrl(origin) { return globalThis.canaryShared.apiRoot(origin) + '/health' }
   function apiRoot(origin) { return globalThis.canaryShared.apiRoot(origin) }
 
-  async function selectSite(ext, origin) {
-    await globalThis.canaryShared.requestSitePermission(ext, origin)
-    const prev = await ext.storage.local.get(ORIGIN_KEY)
+  async function selectSite(ext, origin, signal, progress = function () {}) {
+    const sh = globalThis.canaryShared
+    progress('Checking Thunderbird site permission…')
+    await sh.requestSitePermission(ext, origin, signal)
+    if (signal && signal.aborted) throw new Error('Connection cancelled.')
+    progress('Saving your Canary site…')
+    const prev = await sh.connectionStep(ext.storage.local.get(ORIGIN_KEY), 'Reading Thunderbird settings', signal)
     const changed = prev[ORIGIN_KEY] !== origin
-    if (changed) await setJwt(ext, '')
-    await ext.storage.local.set({ [ORIGIN_KEY]: origin })
+    if (signal && signal.aborted) throw new Error('Connection cancelled.')
+    if (changed) await sh.connectionStep(setJwt(ext, ''), 'Updating Thunderbird settings', signal)
+    if (signal && signal.aborted) throw new Error('Connection cancelled.')
+    await sh.connectionStep(ext.storage.local.set({ [ORIGIN_KEY]: origin }), 'Saving Thunderbird settings', signal)
     return changed
   }
 
@@ -916,7 +922,10 @@
       .get(ORIGIN_KEY)
       .then((obj) => {
         const o = (obj && obj[ORIGIN_KEY]) || ''
-        if (originInput && o) originInput.value = o
+        if (originInput && o) {
+          originInput.value = o
+          void globalThis.canaryShared.primeSitePermission(ext, o).catch(function () {})
+        }
       })
       .catch((e) => {
         out(outEl, 'Could not read settings: ' + (e && e.message ? e.message : String(e)), true)
@@ -941,9 +950,18 @@
       })
     }
 
+    let siteSetupController = null
+    if (originInput) originInput.addEventListener('input', function () {
+      const value = normalizeOrigin(originInput.value)
+      if (value) void globalThis.canaryShared.primeSitePermission(ext, value).catch(function () {})
+    })
+
     async function testConnection() {
       if (!originInput) return
-      out(outEl, 'Checking — saving URL, then calling /api/health…', 'busy')
+      if (siteSetupController) siteSetupController.abort()
+      const controller = new AbortController()
+      siteSetupController = controller
+      const progress = text => { if (!controller.signal.aborted) out(outEl, text, 'busy') }
       const n = normalizeOrigin(originInput.value)
       if (!n) {
         out(
@@ -956,16 +974,19 @@
       originInput.value = n
       let clearedJwt = false
       try {
-        clearedJwt = await selectSite(ext, n)
+        clearedJwt = await selectSite(ext, n, controller.signal, progress)
       } catch (e) {
+        if (controller.signal.aborted) return
         out(outEl, 'Could not save: ' + (e && e.message ? e.message : String(e)), true)
         return
       }
 
       const url = healthUrl(n)
       try {
-        const res = await globalThis.canaryShared.secureFetch(url, { method: 'GET', cache: 'no-store' })
-        const text = await res.text()
+        progress('Contacting Canary /api/health…')
+        const res = await globalThis.canaryShared.checkSiteHealth(n, controller.signal)
+        if (controller.signal.aborted) return
+        const text = res.text
         let showBody = text
         try {
           const j = JSON.parse(text)
@@ -991,6 +1012,7 @@
         }
         await refreshAuthAndCases(ext, n, { preferFilingOnSuccess: true })
       } catch (e) {
+        if (controller.signal.aborted) return
         const err = e && e.message ? e.message : String(e)
         out(
           outEl,
@@ -1087,7 +1109,14 @@
         out($('out'), 'Enter your Canary site URL, then use Test connection.', true)
         return
       }
-      try { await selectSite(ext, origin) } catch (e) { loginShowErr(e.message); return }
+      if (siteSetupController) siteSetupController.abort()
+      const controller = new AbortController()
+      siteSetupController = controller
+      try { await selectSite(ext, origin, controller.signal, text => out($('out'), text, 'busy')) } catch (e) {
+        if (!controller.signal.aborted) loginShowErr(e.message)
+        return
+      }
+      if (controller.signal.aborted) return
       if (originInput) originInput.value = origin
       if (!ext.runtime || typeof ext.runtime.sendMessage !== 'function') {
         loginShowErr('Thunderbird messaging unavailable.')
@@ -1221,6 +1250,7 @@
     if (connectBtn) connectBtn.onclick = () => void connectToCanary()
     const cancelConnectBtn = $('btn-connect-cancel')
     if (cancelConnectBtn) cancelConnectBtn.onclick = () => {
+      if (siteSetupController) siteSetupController.abort()
       ext.runtime.sendMessage({ type: 'canary-plugin-connect-cancel' }, function () {
         if (ext.runtime.lastError) { loginShowErr(ext.runtime.lastError.message); return }
         loginShowErr('')

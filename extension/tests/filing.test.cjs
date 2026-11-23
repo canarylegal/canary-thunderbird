@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 test('lookup hints never supply an automatic reply or filing context',async()=>{
- const ctx=vm.createContext({URL,Headers,Blob,FormData,console,fetch:()=>{throw Error('No lookup may bind a target')}})
+ const ctx=vm.createContext({URL,Headers,Blob,FormData,clearTimeout,console,fetch:()=>{throw Error('No lookup may bind a target')}})
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../canary-shared.js'),'utf8'),ctx)
  assert.equal(await ctx.canaryShared.fetchLinkedCase(),null)
  assert.equal(await ctx.canaryShared.fetchMessageContext(),null)

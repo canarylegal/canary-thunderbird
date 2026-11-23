@@ -28,11 +28,58 @@
     return 'https://' + new URL(normalizeOrigin(origin)).hostname + '/*'
   }
 
-  async function requestSitePermission(ext, origin) {
-    // Invoke directly from the button handler, before awaiting storage or messaging.
-    const granted = await ext.permissions.request({ origins: [sitePermission(origin)] })
+  const knownSitePermissions = new Set()
+  async function primeSitePermission(ext, origin) {
+    const pattern = sitePermission(origin)
+    const granted = await ext.permissions.contains({ origins: [pattern] })
+    if (granted) knownSitePermissions.add(pattern)
+    else knownSitePermissions.delete(pattern)
+    return granted
+  }
+  const permissionApi = getGecko() && getGecko().permissions
+  if (permissionApi && permissionApi.onRemoved) {
+    permissionApi.onRemoved.addListener(function () { knownSitePermissions.clear() })
+  }
+
+  function connectionStep(promise, label, signal, timeoutMs = 15000) {
+    return new Promise(function (resolve, reject) {
+      let timer
+      function cleanup() { clearTimeout(timer); if (signal) signal.removeEventListener('abort', cancel) }
+      function cancel() { cleanup(); reject(new Error('Connection check cancelled. Try again when ready.')) }
+      if (signal && signal.aborted) { Promise.resolve(promise).catch(function () {}); cancel(); return }
+      if (signal) signal.addEventListener('abort', cancel, { once: true })
+      timer = setTimeout(function () { cleanup(); reject(new Error(label + ' timed out. Please try again.')) }, timeoutMs)
+      Promise.resolve(promise).then(function (value) { cleanup(); resolve(value) }, function (error) { cleanup(); reject(error) })
+    })
+  }
+
+  async function requestSitePermission(ext, origin, signal) {
+    const pattern = sitePermission(origin)
+    if (knownSitePermissions.has(pattern)) return normalizeOrigin(origin)
+    // Keep request synchronous with the click; do not await contains() here.
+    const granted = await connectionStep(ext.permissions.request({ origins: [pattern] }),
+      'Waiting for Thunderbird site permission (check Add-ons and Themes > Canary > Permissions)', signal)
     if (!granted) throw new Error('Site access was not granted. Allow this Canary site to connect.')
+    knownSitePermissions.add(pattern)
     return normalizeOrigin(origin)
+  }
+
+  async function checkSiteHealth(origin, signal, timeoutMs = 15000) {
+    if (signal && signal.aborted) throw new Error('Connection check cancelled.')
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    if (signal) signal.addEventListener('abort', cancel, { once: true })
+    try {
+      return await connectionStep((async function () {
+        const response = await secureFetch(apiRoot(origin) + '/health', {
+          method: 'GET', cache: 'no-store', signal: controller.signal,
+        })
+        return { ok: response.ok, status: response.status, text: await response.text() }
+      })(), 'Contacting Canary /api/health', signal, timeoutMs)
+    } finally {
+      controller.abort()
+      if (signal) signal.removeEventListener('abort', cancel)
+    }
   }
 
   async function secureFetch(url, options) {
@@ -804,6 +851,9 @@
     normalizeOrigin,
     sitePermission,
     requestSitePermission,
+    primeSitePermission,
+    connectionStep,
+    checkSiteHealth,
     secureFetch,
     authHeaders,
     jsonAuthHeaders,
