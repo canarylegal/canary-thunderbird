@@ -1,10 +1,10 @@
 # Canary — file to matter
 
-Development candidate 1.5.41; requires the coordinated Canary CMS authorization callback update. Source and distribution repository: `canarylegal/canary-thunderbird`. This repository owns the Thunderbird extension source, regression tests, release packages and offline build tools. It contains no Canary CMS server source or Git history. The GitHub repository is public, Actions are disabled, and no GitHub Release has been published. The archived 1.5.36 XPI remains in the repository. Build the current review candidate with `npm run build`; the configured update feed is not live until GitHub Release assets are published. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
+Development candidate 1.5.42; requires the coordinated Canary CMS authorization callback update. Source and distribution repository: `canarylegal/canary-thunderbird`. This repository owns the Thunderbird extension source, regression tests, release packages and offline build tools. It contains no Canary CMS server source or Git history. The GitHub repository is public, Actions are disabled, and no GitHub Release has been published. The archived 1.5.36 XPI remains in the repository. Build the current review candidate with `npm run build`; the configured update feed is not live until GitHub Release assets are published. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
 
 ## Install and connect
 
-In Thunderbird 128 or later, open Add-ons and Themes, select the gear menu, then Install Add-on From File and select `canary-thunderbird-1.5.41.xpi`. Open Canary from the toolbar, enter your HTTPS Canary site, grant access to that site and connect. After approving in your browser, select **Open Thunderbird** to finish connecting. Open a message and use Canary to choose its matter and file it. In a compose window, use Canary to attach matter files or select the matter for filing on send. Only grant access to sites you trust.
+In Thunderbird 128 or later, open Add-ons and Themes, select the gear menu, then Install Add-on From File and select `canary-thunderbird-1.5.42.xpi`. Open Canary from the toolbar, enter your HTTPS Canary site, grant access to that site and connect. After approving in your browser, select **Open Thunderbird** to finish connecting. Open a message and use Canary to choose its matter and file it. In a compose window, use Canary to attach matter files or select the matter for filing on send. Only grant access to sites you trust.
 
 ## Browser sign-in recovery
 
@@ -36,3 +36,5 @@ Edit source in `extension/`, not inside release archives. Keep the add-on ID and
 `SOURCE-MIGRATION.txt` records source provenance and retired tooling. Linux protocol-handler support lives in `extension/linux/`. No CMS checkout is needed to build or test this repository. GitHub Actions remain disabled and no workflow has been added.
 
 See PUBLISHING.md for the unpublished release procedure and rollback approach. See LICENSE-NOTICE.txt before public release.
+
+Failed queued email opens stop after the attempt; they are not automatically requeued. Security-blocked files remain unavailable. Retry from Canary only after the underlying issue is resolved.

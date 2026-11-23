@@ -3,6 +3,8 @@
 /**
  * Poll Canary for queued "open this filed .eml" requests from the web UI.
  * Opens via messenger.messageDisplay.open({ file }) — no browser download.
+ * A claim is consumed once. Failures require an explicit new request; never
+ * renew the queue TTL after failure (that creates an infinite notification loop).
  */
 ;(function () {
   if (globalThis.__canaryPendingEmlInit) return
@@ -162,23 +164,6 @@
     return run
   }
 
-  async function requeuePendingEml(sh, auth, claim) {
-    if (!auth || !auth.jwt || !auth.origin || !claim || !claim.case_id || !claim.file_id) return
-    try {
-      await globalThis.canaryShared.secureFetch(sh.apiRoot(auth.origin) + '/mail-plugin/pending-eml-open', {
-        method: 'PUT',
-        headers: sh.jsonAuthHeaders(auth.jwt),
-        body: JSON.stringify({
-          case_id: String(claim.case_id),
-          file_id: String(claim.file_id),
-          ttl_seconds: 120,
-        }),
-      })
-    } catch (e) {
-      console.warn('Canary: could not re-queue failed eml-open', e)
-    }
-  }
-
   async function openClaimedEml(ext, claim, origin, auth) {
     const sh = globalThis.canaryShared
     if (!sh || !claim || !claim.active || !claim.open_token || !claim.case_id || !claim.file_id) {
@@ -202,14 +187,15 @@
     } catch (e) {
       endOpen(claim.file_id, false)
       console.warn('Canary: pending eml-open fetch error', e)
-      await requeuePendingEml(sh, auth, claim)
+      notify('Canary', 'Could not download the e-mail. Check your connection, then open it again from Canary.')
       return false
     }
     if (!res.ok) {
       endOpen(claim.file_id, false)
       console.warn('Canary: pending eml-open fetch failed', res.status)
-      notify('Canary', 'Could not download the e-mail to open (' + res.status + ').')
-      await requeuePendingEml(sh, auth, claim)
+      notify('Canary', res.status === 423
+        ? 'This e-mail is quarantined or awaiting a security check. It cannot be opened until Canary marks it clean.'
+        : 'Could not download the e-mail to open (' + res.status + '). Open it again from Canary when the problem is resolved.')
       return false
     }
     const buf = await res.arrayBuffer()
@@ -219,7 +205,6 @@
     const ok = await openEmlFileSerialized(ext, file)
     endOpen(claim.file_id, ok)
     if (ok) return true
-    await requeuePendingEml(sh, auth, claim)
     return false
   }
 
