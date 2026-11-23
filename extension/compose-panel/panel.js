@@ -11,6 +11,8 @@
   let caseContacts = []
   let precedents = []
   let selectedCase = null
+  let caseLoadGeneration = 0
+  let caseLoading = false
   let attachBrowseFolder = ''
   let selectedAttachIds = []
   /** User changed Matter dropdown; do not overwrite from background prefill/store sync. */
@@ -180,9 +182,9 @@
       const btn = document.createElement('button')
       btn.type = 'button'
       btn.className = 'case-result-row' + (selectedCase && String(selectedCase.id) === id ? ' is-selected' : '')
-      btn.textContent = sh().matterLabel(c)
+      globalThis.canaryUi.matter(btn, c)
       btn.onclick = () => {
-        void selectCase(c)
+        void selectCase(c).catch(e => out(authErrorHint(e), true))
       }
       box.appendChild(btn)
     }
@@ -307,7 +309,7 @@
     if (!summary) return
     const n = selectedAttachIds.length
     if (n === 0) {
-      summary.textContent = 'No files selected for attach.'
+      summary.textContent = 'No Canary documents selected.'
       return
     }
     const names = []
@@ -346,11 +348,13 @@
           ? 'Click files to select (up to ' + max + ').'
           : n + ' file' + (n === 1 ? '' : 's') + ' selected'
     }
-    if (btn) btn.disabled = n === 0
+    if (btn) { btn.disabled = n === 0; btn.textContent = n ? 'Attach ' + n + (n === 1 ? ' file' : ' files') : 'Attach to message' }
   }
 
   function toggleAttachFile(id) {
     const sid = String(id)
+    const f = caseFiles.find(x => String(x.id) === sid)
+    if (!f || (f.scan_state && !['clean','unscanned'].includes(f.scan_state))) return
     const max = (attachUi() && attachUi().MAX_ATTACH) || 25
     const idx = selectedAttachIds.indexOf(sid)
     if (idx >= 0) {
@@ -408,9 +412,10 @@
     }
     root.appendChild(crumbs)
 
-    const folders = ui.childFolders(caseFiles, attachBrowseFolder)
-    let docs = ui.filesInBrowseFolder(caseFiles, attachBrowseFolder)
-    if (!folders.length && !docs.length && attachBrowseFolder === '') {
+    const query = $('attach-search').value.trim().toLowerCase()
+    const folders = query ? [] : ui.childFolders(caseFiles, attachBrowseFolder)
+    let docs = query ? ui.allAttachableFiles(caseFiles).filter(f => String(f.original_filename || '').toLowerCase().includes(query)) : ui.filesInBrowseFolder(caseFiles, attachBrowseFolder)
+    if (!query && !folders.length && !docs.length && attachBrowseFolder === '') {
       docs = ui.allAttachableFiles(caseFiles)
     }
     if (!folders.length && !docs.length) {
@@ -436,14 +441,14 @@
     for (let j = 0; j < docs.length; j++) {
       const f = docs[j]
       const id = String(f.id)
-      const row = document.createElement('button')
-      row.type = 'button'
-      row.className =
-        'tb-list-row tb-list-row--file' + (selectedAttachIds.indexOf(id) >= 0 ? ' is-selected' : '')
-      appendRowLabel(row, '📄', (f.original_filename || id), true)
-      row.onclick = function () {
-        toggleAttachFile(id)
-      }
+      const row = globalThis.canaryUi.node('div', null, 'tb-list-row tb-list-row--file')
+      const available = !f.scan_state || ['clean','unscanned'].includes(f.scan_state)
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = selectedAttachIds.includes(id); cb.disabled = !available; cb.setAttribute('aria-label', f.original_filename || id)
+      cb.onchange = () => toggleAttachFile(id)
+      const text = globalThis.canaryUi.node('span', f.original_filename || id)
+      text.append(globalThis.canaryUi.node('small', available ? ((f.mime_type || 'Document') + (f.size_bytes ? ' · ' + (f.size_bytes / 1024).toFixed(0) + ' KB' : '')) : f.scan_state === 'blocked' ? 'Blocked by security scan' : 'Security check pending — cannot attach yet', 'file-meta'))
+      row.append(cb, text)
+      if (available) { const preview = globalThis.canaryUi.node('button', 'Preview', 'link'); preview.onclick = () => { void globalThis.canaryUi.preview(String(selectedCase.id), id).catch(e => { $('attach-status').textContent = e.message }) }; row.append(preview) }
       root.appendChild(row)
     }
   }
@@ -457,6 +462,13 @@
       out('Attach UI failed to load. Reload the Canary add-on.', true)
       return
     }
+    try {
+      const auth = await loadAuth(sh().getGecko())
+      const latest = await apiGet(sh().getGecko(), auth.jwt, auth.origin, '/cases/' + encodeURIComponent(selectedCase.id) + '/files')
+      caseFiles = latest
+      selectedAttachIds = selectedAttachIds.filter(id => latest.some(f => String(f.id) === id && (!f.scan_state || ['clean','unscanned'].includes(f.scan_state))))
+      $('attach-retry').hidden = true
+    } catch (e) { setAttachPickerVisible(true); $('attach-picker-root').replaceChildren(); $('attach-status').textContent = 'Could not load documents. Your selections have been kept. ' + authErrorHint(e); $('attach-retry').hidden = false; return }
     const line = $('attach-matter-line')
     if (line) {
       line.textContent =
@@ -464,6 +476,8 @@
           ? 'No files in this matter'
           : caseFiles.length + ' file' + (caseFiles.length === 1 ? '' : 's') + ' in matter'
     }
+    $('attach-search').value = ''
+    $('attach-status').textContent = ''
     attachBrowseFolder = ''
     updateAttachPickerFooter()
     renderInlineAttachPicker()
@@ -490,7 +504,7 @@
       updateAttachSummary()
       out('Attached ' + selectedAttachIds.length + ' file(s) from Canary.', false)
     } catch (e) {
-      out((e && e.message) || String(e), true)
+      $('attach-status').textContent = (e && e.message) || String(e)
       if (btn) btn.disabled = selectedAttachIds.length === 0
     }
   }
@@ -505,27 +519,40 @@
   }
 
   async function selectCase(c) {
+    const generation = ++caseLoadGeneration
+    caseLoading = true
+    $('btn-apply').disabled = true
     userMatterModeDirty = true
+    const changed = selectedCase && String(selectedCase.id) !== String(c.id)
     selectedCase = c
+    if (changed) { selectedAttachIds = []; recipientPick = { kind: 'none' }; await cs().setTabState(sh().getGecko(), composeTabId, { attachmentFileIds: [], caseContactId: null, precedentId: null, folder: '' }) }
     attachBrowseFolder = ''
     const sel = $('case-selected')
-    if (sel) sel.textContent = 'Selected: ' + sh().matterLabel(c)
+    if (sel) { sel.hidden = false; globalThis.canaryUi.matter(sel, c) }
+    $('compose-change-matter').hidden = false
+    $('case-search').closest('label').hidden = true
+    $('case-results').hidden = true
     if ($('matter-mode')) $('matter-mode').value = 'pick'
     updateMatterPickVisibility()
     const ext = sh().getGecko()
     const { jwt, origin } = await loadAuth(ext)
-    caseFiles = await apiGet(ext, jwt, origin, '/cases/' + encodeURIComponent(c.id) + '/files')
-    caseContacts = await apiGet(ext, jwt, origin, '/cases/' + encodeURIComponent(c.id) + '/contacts')
+    const nextFiles = await apiGet(ext, jwt, origin, '/cases/' + encodeURIComponent(c.id) + '/files')
+    const nextContacts = await apiGet(ext, jwt, origin, '/cases/' + encodeURIComponent(c.id) + '/contacts')
+    let nextPrecedents
     if (c.matter_sub_type_id) {
-      precedents = await apiGet(
+      nextPrecedents = await apiGet(
         ext,
         jwt,
         origin,
         '/precedents?kind=email&matter_sub_type_id=' + encodeURIComponent(c.matter_sub_type_id),
       )
     } else {
-      precedents = await apiGet(ext, jwt, origin, '/precedents?kind=email')
+      nextPrecedents = await apiGet(ext, jwt, origin, '/precedents?kind=email')
     }
+    if (generation !== caseLoadGeneration) return
+    caseLoading = false
+    caseFiles = nextFiles; caseContacts = nextContacts; precedents = nextPrecedents
+    $('btn-apply').disabled = false
     fillMatterFields()
     fillFolderSelect()
     renderRecipientPick()
@@ -563,6 +590,7 @@
       globalContactId: null,
       mergeAllClients: mergeAll,
       attachmentFileIds: selectedAttachIds.slice(),
+      fileOnSend: $('file-on-send').checked, bodyMode: $('body-mode').value, updateRecipient: $('update-recipient').checked,
     }
   }
 
@@ -575,12 +603,8 @@
     if (mode === 'pick' && st.caseId && !base.caseId) {
       base.caseId = String(st.caseId)
     }
-    if (st.folder) base.folder = st.folder
     if (st.parentFileId) base.parentFileId = st.parentFileId
-    if (st.precedentId) base.precedentId = st.precedentId
-    if (st.caseContactId) base.caseContactId = st.caseContactId
-    if (st.mergeAllClients) base.mergeAllClients = true
-    if (!base.attachmentFileIds.length && st.attachmentFileIds && st.attachmentFileIds.length) {
+    if (!selectedCase && !base.attachmentFileIds.length && st.attachmentFileIds && st.attachmentFileIds.length) {
       base.attachmentFileIds = st.attachmentFileIds
     }
     return base
@@ -597,7 +621,7 @@
       caseContactId: ui.caseContactId,
       globalContactId: null,
       mergeAllClients: ui.mergeAllClients,
-      attachmentFileIds: ui.attachmentFileIds,
+      attachmentFileIds: ui.attachmentFileIds, fileOnSend: ui.fileOnSend, bodyMode: ui.bodyMode, updateRecipient: ui.updateRecipient,
     }
     if (mode === 'none') {
       patch.caseId = null
@@ -676,6 +700,9 @@
     const fields = $('matter-fields')
     if (pick) pick.hidden = mode !== 'pick'
     if (fields) fields.hidden = mode !== 'pick' || !selectedCase
+    $('btn-apply').disabled = mode === 'pick' && (!selectedCase || caseLoading)
+    $('matter-mode').closest('label').hidden = !!selectedCase
+    if (!selectedCase) { $('case-selected').hidden = true; $('compose-change-matter').hidden = true; $('case-search').closest('label').hidden = false }
   }
 
   async function clearMatterBecauseUserChoseNone() {
@@ -762,7 +789,7 @@
 
   function updateComposeKindUi() {
     const section = $('recipient-section')
-    if (section) section.classList.toggle('is-disabled', isReplyCompose)
+    if (section) section.classList.remove('is-disabled')
     const replyNote = $('recipient-reply-note')
     const newNote = $('recipient-new-note')
     if (replyNote) replyNote.hidden = !isReplyCompose
@@ -808,6 +835,9 @@
   async function restoreState(ext, options) {
     if (composeTabId == null) return
     const st = await cs().getTabState(ext, composeTabId)
+    $('file-on-send').checked = st.fileOnSend !== false
+    $('body-mode').value = st.bodyMode || 'append'
+    $('update-recipient').checked = !isReplyCompose && !!st.updateRecipient
     updatePrefillHint(st)
     selectedAttachIds = (st && st.attachmentFileIds) || []
 
@@ -934,7 +964,7 @@
       if (!allCases.length) {
         out('No matters loaded — sign in via Server & sign-in.', true)
       } else {
-        out('Type in Search matters to find a matter.', false)
+        out('', false)
       }
     })()
   }
@@ -949,6 +979,12 @@
     composeTabId = await resolveComposeTabId(ext)
     if (composeTabId != null) await cs().setActiveComposeTab(ext, composeTabId)
     isReplyCompose = await detectReplyCompose(ext)
+    $('update-recipient').disabled = isReplyCompose
+    $('attach-search').addEventListener('input', renderInlineAttachPicker)
+    $('attach-retry').onclick = () => { void openAttachPickerInline() }
+    globalThis.canaryUi.keyboardSearch($('case-search'), $('case-results'))
+    $('compose-change-matter').onclick = () => { $('case-search').closest('label').hidden = false; $('case-search').focus() }
+    for (const id of ['file-on-send','body-mode','update-recipient']) $(id).addEventListener('change', () => { void persistState(ext) })
     updateComposeKindUi()
 
     try {
@@ -1013,13 +1049,14 @@
 
     $('btn-apply').addEventListener('click', () => {
       void (async function () {
-        out('Applying…', false)
+        out('Preparing review…', false)
         $('btn-apply').disabled = true
         try {
           if (composeTabId == null) throw new Error('No compose tab found. Click in the message body, then reopen Canary.')
           const { jwt, origin } = await loadAuth(ext)
           const form = await readFormStateFromStore(ext)
           if (!form.caseId) {
+            if (!await globalThis.canaryUi.review('Filing preference', ['This email will not be filed on send. Your draft remains unchanged.'], 'Save preference')) return
             await sh().syncPendingSend(jwt, origin, null, null)
             out('Matter set to none — sent mail will not be filed.', false)
             await closeComposePanelAfterDone(ext)
@@ -1044,24 +1081,23 @@
             }
             return data
           })
+          const before = await ext.compose.getComposeDetails(composeTabId)
+          const lines = [
+            'Matter: ' + sh().matterLabel(selectedCase || { id: form.caseId }),
+            'Recipients: ' + (isReplyCompose || !form.updateRecipient ? 'Keep current recipients' : (bundle.to || 'Keep current recipients')),
+            'Subject: Keep current subject',
+            'Body: ' + (!form.precedentId ? 'No changes' : form.bodyMode === 'replace' ? 'REPLACE your existing draft with the selected precedent' : 'Insert precedent below your existing draft'),
+            'Attachments: ' + ((bundle.attachments || []).map(a => a.filename).join(', ') || 'No additions'),
+            'On send: ' + (form.fileOnSend ? 'File to selected matter / ' + (form.folder || 'Matter root') : 'Do not file'),
+            'This updates your draft. It does not send the email.',
+          ]
+          if (!await globalThis.canaryUi.review('Review draft changes', lines, 'Apply to draft')) { out('No changes applied.', false); return }
+          const current = await ext.compose.getComposeDetails(composeTabId)
+          if (['subject','body','plainTextBody','to','cc','bcc'].some(k => JSON.stringify(before[k]) !== JSON.stringify(current[k]))) throw new Error('Your draft changed while reviewing. Review the latest draft again.')
           await globalThis.canaryApplyComposeBundle(ext, composeTabId, bundle, {
-            skipTo: isReplyCompose,
+            skipTo: isReplyCompose || !form.updateRecipient, preserveSubject: true,
+            bodyMode: form.precedentId ? form.bodyMode : 'none',
           })
-          let sourceFileId = form.parentFileId || null
-          let filedIncoming = false
-          if (isReplyCompose) {
-            const relatedId = await sh().resolveRelatedMessageIdForCompose(ext, composeTabId)
-            if (relatedId != null) {
-              const filed = await sh().fileTbMessageById(ext, jwt, origin, form.caseId, relatedId, {
-                folder: form.folder,
-                tag: true,
-              })
-              if (filed && filed.fileId) {
-                sourceFileId = String(filed.fileId)
-                filedIncoming = true
-              }
-            }
-          }
           await cs().setTabState(ext, composeTabId, {
             caseId: form.caseId,
             folder: form.folder,
@@ -1070,23 +1106,10 @@
             caseContactId: isReplyCompose ? null : form.caseContactId,
             mergeAllClients: form.mergeAllClients,
             attachmentFileIds: form.attachmentFileIds,
-            composeAutoApplied: true,
+            composeAutoApplied: true, fileOnSend: form.fileOnSend,
           })
-          await sh().syncPendingSend(jwt, origin, form.caseId, sourceFileId || null)
-          if (filedIncoming) {
-            out(
-              'Applied. Incoming message saved to the matter and tagged. Your sent reply will file to the matter when you send.',
-              false,
-            )
-          } else if (isReplyCompose) {
-            out(
-              'Applied to compose. Could not find the original message to file — your sent reply will still file when you send.',
-              false,
-            )
-          } else {
-            out('Applied. Your message will file to the matter when you send.', false)
-          }
-          await closeComposePanelAfterDone(ext)
+          await sh().syncPendingSend(jwt, origin, form.fileOnSend ? form.caseId : null, null)
+          out(form.fileOnSend ? 'Draft updated. Your sent email will file to the selected matter.' : 'Draft updated. This email will not be filed on send.', false)
         } catch (e) {
           out(authErrorHint(e), true)
         } finally {

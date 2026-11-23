@@ -31,6 +31,7 @@
     const sh = shared()
     const cs = store()
     let tabState = await cs.getTabState(ext, tabId)
+    if (tabState.fileOnSend === false) return { caseId: '', tabState, snapshot: null }
     let caseId = tabState.caseId ? String(tabState.caseId) : ''
 
     const snapshot = await readSendSnapshot(ext, tabId)
@@ -48,6 +49,7 @@
       const activeId = await cs.getActiveComposeTab(ext)
       if (activeId != null) {
         tabState = await cs.getTabState(ext, activeId)
+        if (tabState.fileOnSend === false) return { caseId: '', tabState, snapshot: null }
         caseId = tabState.caseId ? String(tabState.caseId) : ''
       }
     }
@@ -107,13 +109,8 @@
       imapRefs,
       internetMessageId: internetMid || null,
     })
-    await sh.recordFiledTbMessage(
-      ext,
-      header.id,
-      caseId,
-      uploaded && uploaded.id != null ? String(uploaded.id) : null,
-      internetMid,
-    )
+    if (globalThis.canaryPendingFileTags) await globalThis.canaryPendingFileTags.trackSent({ jwt: token, origin }, caseId, Object.assign({}, header, { headerMessageId: internetMid || header.headerMessageId }), uploaded, subj, tabState.prefilledCaseNumber || '')
+    else if (uploaded && ['clean','unscanned'].includes(uploaded.scan_state)) await sh.recordFiledTbMessage(ext, header.id, caseId, String(uploaded.id), internetMid)
     return { header: header, uploaded: uploaded, internetMessageId: internetMid || null }
   }
 
@@ -137,6 +134,7 @@
       imapRefs: null,
       internetMessageId: headerMessageId || null,
     })
+    if (globalThis.canaryPendingFileTags) await globalThis.canaryPendingFileTags.trackSent({ jwt: token, origin }, caseId, null, uploaded, subj, tabState.prefilledCaseNumber || '')
     return { header: null, uploaded: uploaded, internetMessageId: headerMessageId || null }
   }
 

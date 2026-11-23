@@ -203,23 +203,37 @@
     }
   }
 
+  function appendToDraftHtml(existing, merge) {
+    const signature = existing.search(/<div[^>]*class="[^"]*moz-signature/i)
+    const closingBody = existing.search(/<\/body\s*>/i)
+    const at = signature >= 0 ? signature : closingBody >= 0 ? closingBody : existing.length
+    return existing.slice(0, at) + (at ? '<div><br></div>' : '') + plainTextToHtml(merge) + existing.slice(at)
+  }
+
   async function applyBundleToTab(ext, tabId, bundle, options) {
     const sh = shared()
     if (!ext.compose || tabId == null) {
       throw new Error('Compose API not available.')
     }
     const skipTo = options && options.skipTo
-    const composeDetails = await captureComposeDetailsForApply(ext, tabId)
+    const composeDetails = options && options.bodyMode ? await ext.compose.getComposeDetails(tabId) : await captureComposeDetailsForApply(ext, tabId)
 
-    const headerDetails = {
-      subject: bundle.subject || '',
-    }
+    const headerDetails = options && options.preserveSubject ? {} : { subject: bundle.subject || '' }
     if (!skipTo) {
       headerDetails.to = bundle.to || undefined
       if (headerDetails.to === '') delete headerDetails.to
     }
 
-    await applyBodyWithSignaturePreserve(ext, tabId, bundle, composeDetails, headerDetails)
+    if (options && options.bodyMode) {
+      const merge = mergeBodyText(bundle)
+      let body = {}
+      if (options.bodyMode !== 'none' && merge) {
+        const existing = composeDetails.isPlainText ? String(composeDetails.plainTextBody || composeDetails.body || '') : String(composeDetails.body || '')
+        if (options.bodyMode === 'replace') body = mergeOnlyFields(merge, composeDetails.isPlainText)
+        else body = composeDetails.isPlainText ? { plainTextBody: existing + (existing ? '\n\n' : '') + merge } : { body: appendToDraftHtml(existing, merge) }
+      }
+      await ext.compose.setComposeDetails(tabId, Object.assign({}, headerDetails, body))
+    } else await applyBodyWithSignaturePreserve(ext, tabId, bundle, composeDetails, headerDetails)
 
     await applyAttachmentsOnly(ext, tabId, bundle)
   }

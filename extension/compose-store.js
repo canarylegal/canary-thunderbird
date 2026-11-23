@@ -7,6 +7,7 @@
   function blankState() {
     return {
       caseId: null,
+      fileOnSend: true, bodyMode: 'append', updateRecipient: false,
       folder: '',
       parentFileId: null,
       precedentId: null,

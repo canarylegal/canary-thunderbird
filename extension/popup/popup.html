@@ -6,43 +6,42 @@
     <title>Canary</title>
     <link rel="stylesheet" href="../canary-theme.css" />
     <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="../ui.css" />
   </head>
   <body>
     <div class="wrap" id="app">
       <div class="pane-head" id="popout-head">
-        <h1>Canary</h1>
+        <img class="brand-icon" src="../icons/icon32.png" alt=""><h1>Canary</h1>
         <button type="button" class="ghost" id="btn-close-popout" hidden>Close</button>
       </div>
       <p class="subhead" id="subhead">Set your Canary site and sign in below, then you can file mail from here.</p>
 
       <div id="block-filing" class="block" hidden>
-        <p class="section-title">Filing</p>
+        <div id="message-summary" class="message-summary"></div>
         <div id="linked-case-line" class="linked-case-line" role="status">
           Select a message to see whether it is already in Canary.
         </div>
-        <label class="field" for="mail-description">
-          <span>File name base (optional)</span>
-          <input type="text" id="mail-description" spellcheck="false" placeholder="Uses subject if empty" />
-        </label>
         <label class="field" for="case-search">
-          <span>Search matters</span>
-          <input type="search" id="case-search" spellcheck="false" placeholder="Type to search" disabled />
+          <span>File to matter</span>
+          <input type="search" id="case-search" spellcheck="false" placeholder="Matter number, client or description" disabled />
         </label>
         <div id="case-results" class="case-results" hidden role="listbox" aria-label="Matters"></div>
-        <p id="case-selected" class="case-selected" hidden></p>
-        <button type="button" class="primary" id="btn-file" disabled>File to matter</button>
-        <p class="hint" style="margin-top: 8px">
-          To compose with merge and attachments, use the <strong>Canary</strong> button on the compose toolbar.
-        </p>
+        <div id="case-selected" class="case-selected" hidden></div><button id="change-matter" class="link" hidden>Change matter</button>
+<details><summary>Filing options</summary>        <label class="field" for="mail-description">
+          <span>Save as</span>
+          <input type="text" id="mail-description" spellcheck="false" placeholder="Uses subject if empty" />
+        </label>
+<label class="field"><span>Folder</span><select id="filing-folder"><option value="">Matter root</option></select></label><p class="muted">The email and its attachments are saved together.</p></details>
+        <button type="button" class="primary" id="btn-file" disabled>File email</button>
         <p class="filing-foot">
-          <button type="button" class="link" id="btn-open-setup">Server &amp; sign-in…</button>
+          <button type="button" class="link" id="btn-open-setup">Connection settings</button>
         </p>
       </div>
 
       <div id="block-setup" class="block block-setup">
-        <p class="section-title">Server &amp; sign-in</p>
+        <p class="section-title">Connection settings</p>
         <label class="field" for="apiOrigin">
-          <span>Canary site (origin only, e.g. <code>https://canary.example.org</code>)</span>
+          <span>Canary address</span>
           <input
             type="text"
             id="apiOrigin"
@@ -52,7 +51,7 @@
           />
         </label>
         <p class="hint">HTTPS is required. Allow access only to your Canary site when prompted.</p>
-        <button type="button" class="primary" id="test" title="Save URL and call GET /api/health">Test connection</button>
+        <details id="connection-tools"><summary>Troubleshooting</summary><button type="button" class="ghost" id="test">Test connection</button></details>
         <p class="setup-actions" id="setup-filing-back-wrap" hidden>
           <button type="button" class="link" id="btn-filing-back">Back to filing</button>
         </p>
@@ -61,29 +60,31 @@
 
         <div id="panel-pre-auth" class="panel">
           <p class="muted" style="margin-top: 0">
-            Opens Canary sign-in in your default browser (passkeys and authenticator apps supported). After you authorise, return to Thunderbird — the add-on connects automatically. If your firm requires two-factor authentication, complete that verification in Canary.
+            Sign in securely in your browser. Thunderbird may first ask permission to access your Canary site.
           </p>
           <p id="login-err" class="inline-err" hidden></p>
           <button type="button" class="primary" id="btn-connect">Connect to Canary…</button>
-          <button type="button" class="ghost" id="btn-connect-cancel">Cancel connection</button>
+          <button type="button" class="ghost" id="btn-connect-cancel" hidden>Cancel connection</button>
           <p class="hint">Closed the browser page? Connect again to start a fresh sign-in.</p>
         </div>
 
         <div id="panel-post-auth" class="panel panel-hidden">
           <p class="row-between">
             <span id="auth-status" class="auth-status"></span>
-            <button type="button" class="ghost" id="btn-logout">Sign out</button>
+            <button type="button" class="ghost" id="btn-change-connection">Change connection</button><button type="button" class="ghost" id="btn-logout">Sign out</button>
           </p>
         </div>
       </div>
 
       <p class="companion-launch" id="companion-launch-wrap">
-        <button type="button" class="link" id="btn-open-companion">Open in a separate window…</button>
+        <button type="button" class="link" id="btn-open-companion">Expand filing window</button>
       </p>
 
+<footer class="app-footer"><span id="account-summary">Canary mail</span><button type="button" class="link" data-activity>Recent activity</button></footer>
       <div class="status" id="out" role="status" aria-live="polite"></div>
     </div>
     <script src="../canary-shared.js"></script>
+    <script src="../ui.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

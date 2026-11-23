@@ -53,6 +53,9 @@
   /** @type {Array<{ id: unknown, case_number?: unknown, client_name?: unknown, matter_description?: unknown }>} */
   let allCases = []
   let selectedCaseId = ''
+  let filingMessageId = null
+  let possibleCopies = []
+  let recentCaseIds = []
   let linkedCaseId = ''
   let filingLookupGeneration = 0
   /** Last message id we refreshed the filing banner for (context filing reuses one window). */
@@ -94,10 +97,10 @@
     el.classList.remove('subhead--filing', 'subhead--server')
     if (mode === 'filing') {
       el.classList.add('subhead--filing')
-      el.textContent = 'Select a matter and file. Use “Server & sign-in” only to change site or account.'
+      el.textContent = 'File email'
     } else {
       el.classList.add('subhead--server')
-      el.textContent = 'Set your Canary site and sign in here. When done, the filing view opens automatically.'
+      el.textContent = 'Connect Thunderbird to your Canary account.'
     }
   }
 
@@ -157,14 +160,31 @@
     if (selEl) {
       if (selectedCaseId && labelText) {
         selEl.hidden = false
-        selEl.textContent = 'Selected: ' + labelText
+        const row = allCases.find(c => String(c.id) === selectedCaseId) || possibleCopies.find(c => String(c.id) === selectedCaseId)
+        if (row) globalThis.canaryUi.matter(selEl, row); else selEl.textContent = labelText
       } else {
         selEl.hidden = true
         selEl.textContent = ''
       }
     }
     const fileBtn = $('btn-file')
-    if (fileBtn) fileBtn.disabled = !selectedCaseId
+    if (fileBtn) { fileBtn.disabled = !selectedCaseId; fileBtn.textContent = selectedCaseId ? 'File to ' + ((allCases.find(c => String(c.id) === selectedCaseId) || {}).case_number || 'selected matter') : 'File email' }
+    if ($('change-matter')) $('change-matter').hidden = !selectedCaseId
+    if ($('case-search')) $('case-search').closest('label').hidden = !!selectedCaseId
+    if ($('case-results')) $('case-results').hidden = !!selectedCaseId
+    void loadFilingFolders(selectedCaseId)
+  }
+
+  async function loadFilingFolders(caseId) {
+    const select = $('filing-folder'); if (!select) return
+    select.replaceChildren(new Option('Matter root', '')); if (!caseId) return
+    try {
+      const auth = await globalThis.canaryShared.getStoredAuth(getExt())
+      const res = await globalThis.canaryShared.secureFetch(apiRoot(auth.origin) + '/cases/' + encodeURIComponent(caseId) + '/files', { headers: authHeaders(auth.jwt) })
+      if (!res.ok) throw new Error('Folders could not be loaded. Matter root is available.')
+      const files = await res.json(); if (selectedCaseId !== caseId) return
+      for (const folder of [...new Set(files.map(f => f.folder_path).filter(Boolean))].sort()) select.append(new Option(folder, folder))
+    } catch (e) { if (selectedCaseId === caseId) out($('out'), e.message, true) }
   }
 
   function renderCaseResults() {
@@ -172,7 +192,7 @@
     const input = $('case-search')
     if (!box || !input) return
 
-    if (input.disabled || !allCases.length) {
+    if (selectedCaseId || input.disabled || !allCases.length) {
       box.replaceChildren()
       box.hidden = true
       return
@@ -181,16 +201,9 @@
     box.replaceChildren()
     const q = String(input.value || '').trim()
 
-    if (!q) {
-      const hint = document.createElement('div')
-      hint.className = 'case-results-empty muted'
-      hint.textContent = 'Type in the box to search matters.'
-      box.appendChild(hint)
-      box.hidden = false
-      return
-    }
-
-    const matches = filterCases(input.value)
+    const matches = q ? filterCases(q) : recentCaseIds.map(id => allCases.find(c => String(c.id) === id)).filter(Boolean)
+    if (!q && !matches.length) { box.hidden = true; return }
+    if (!q) box.appendChild(globalThis.canaryUi.node('p', 'Recently used', 'muted'))
     if (!matches.length) {
       const empty = document.createElement('div')
       empty.className = 'case-results-empty muted'
@@ -209,7 +222,8 @@
       btn.className = 'case-result-row' + (id === selectedCaseId ? ' is-selected' : '')
       btn.setAttribute('role', 'option')
       btn.dataset.caseId = id
-      btn.textContent = matterLabel(c)
+      globalThis.canaryUi.matter(btn, c)
+      btn.setAttribute('aria-selected', String(id === selectedCaseId))
       btn.onclick = () => {
         setCaseSelection(id, matterLabel(c))
         void renderCaseResults()
@@ -233,6 +247,7 @@
     const post = $('panel-post-auth')
     if (pre) pre.classList.toggle('panel-hidden', !!signedIn)
     if (post) post.classList.toggle('panel-hidden', !signedIn)
+    if ($('apiOrigin')) $('apiOrigin').readOnly = !!signedIn
     if (signedIn) {
       const ext0 = getExt()
       if (ext0) void syncMailDescriptionField(ext0)
@@ -677,6 +692,9 @@
       return
     }
     let h = got.header
+    if (filingMessageId !== h.id) { filingMessageId = h.id; possibleCopies = []; setCaseSelection('', '') }
+    const summary = $('message-summary')
+    if (summary) summary.replaceChildren(globalThis.canaryUi.node('strong', h.subject || 'Email'), globalThis.canaryUi.node('small', h.author || ''), globalThis.canaryUi.node('small', h.date ? new Date(h.date).toLocaleString() : ''))
     if (h && h.id != null && ext.messages) {
       const mid0 = h.headerMessageId ? String(h.headerMessageId).trim() : ''
       if (!mid0 && typeof ext.messages.getFull === 'function') {
@@ -721,19 +739,26 @@
       const matches = body && Array.isArray(body.matches) ? body.matches : []
       if (!offset) setLinkedCaseLineEl(el, {
         text: matches.length
-          ? 'Possible email copies — verify before choosing a matter. You can also file to another matter.'
-          : 'No confirmed filing location. Choose a matter below to file this message.',
-        state: matches.length ? 'warn' : 'muted',
+          ? 'Possible copies found. Review before filing another copy.'
+          : 'No matching copies found. Choose a matter to file this email.',
+        state: 'muted',
       })
       for (const old of el.querySelectorAll('.filing-more')) old.remove()
-      for (const match of matches) {
-        const row = document.createElement('span'); row.style.display = 'block'
-        const label = document.createElement('span')
-        label.textContent = matterLabel(match) + ' — ' + (match.folder_path || 'Root folder') + ' — ' + match.file_name + ' '
-        const choose = document.createElement('button')
-        choose.type = 'button'; choose.textContent = 'Choose this matter'
-        choose.onclick = () => { setCaseSelection(String(match.id), matterLabel(match)); void renderCaseResults() }
-        row.append(label, choose); el.append(row)
+      if (!offset) possibleCopies = []
+      for (const match of matches) if (!possibleCopies.some(old => old.file_id === match.file_id && old.id === match.id)) possibleCopies.push(match)
+      el.querySelectorAll('.match-card').forEach(n => n.remove())
+      const groups = new Map()
+      for (const match of possibleCopies) { const key = String(match.id); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(match) }
+      for (const [id, copies] of groups) {
+        const ui = globalThis.canaryUi, card = ui.node('section', null, 'match-card'), title = ui.node('div')
+        ui.matter(title, copies[0]); card.append(title)
+        const details = ui.node('details'), summary = ui.node('summary', 'Review ' + copies.length + ' possible ' + (copies.length === 1 ? 'copy' : 'copies')); details.append(summary)
+        for (const match of copies) {
+          const row = ui.node('div', null, 'copy-row'); row.append(ui.node('span', match.file_name), ui.node('small', match.folder_path || 'Matter root', 'file-meta'))
+          const view = ui.node('button', 'View copy', 'link'); view.type = 'button'; view.onclick = () => { void ui.preview(id, match.file_id).catch(e => out($('out'), e.message, true)) }; row.append(view); details.append(row)
+        }
+        const choose = ui.node('button', 'Use this matter', 'ghost'); choose.type = 'button'; choose.onclick = () => { setCaseSelection(id, matterLabel(copies[0])); renderCaseResults() }
+        card.append(details, choose); el.append(card)
       }
       if (body && body.next_offset != null) {
         const more = document.createElement('button')
@@ -878,6 +903,10 @@
     const testBtn = $('test')
     const ext = getExt()
     wirePopoutCloseButton()
+    globalThis.canaryUi.keyboardSearch($('case-search'), $('case-results'))
+    $('change-matter').onclick = () => { setCaseSelection('', ''); renderCaseResults(); $('case-search').focus() }
+    void ext.runtime.sendMessage({ type: 'canary-file-activity' }).then(r => { recentCaseIds = [...new Set((r && r.rows || []).map(x => x.caseId))].slice(0,5); renderCaseResults() }).catch(() => {})
+    if (isCompanion || contextFilingMessageId || isSetupTab) $('companion-launch-wrap').hidden = true
     const blockSetup = $('block-setup')
     const blockFiling = $('block-filing')
     const backFilingWrap = $('setup-filing-back-wrap')
@@ -998,6 +1027,7 @@
       if (siteSetupController) siteSetupController.abort()
       const controller = new AbortController()
       siteSetupController = controller
+      $('btn-connect-cancel').hidden = false
       const progress = text => { if (!controller.signal.aborted) out(outEl, text, 'busy') }
       const n = normalizeOrigin(originInput.value)
       if (!n) {
@@ -1104,7 +1134,8 @@
           /* */
         }
         const who = meEmail ? 'Signed in as ' + meEmail : 'Signed in'
-        if (authEl) authEl.textContent = who + ' · ' + allCases.length + ' matter(s).'
+        if (authEl) authEl.textContent = who
+        $('account-summary').textContent = who
         if (searchInput) {
           searchInput.disabled = false
           searchInput.placeholder = allCases.length ? 'Type to search…' : 'No matters — create in Canary'
@@ -1144,7 +1175,7 @@
       out($('out'), '', false)
       const origin = readOriginFromInput()
       if (!origin) {
-        out($('out'), 'Enter your Canary site URL, then use Test connection.', true)
+        out($('out'), 'Enter your Canary HTTPS address to connect.', true)
         return
       }
       if (siteSetupController) siteSetupController.abort()
@@ -1162,6 +1193,7 @@
       }
       const connectBtn = $('btn-connect')
       if (connectBtn) connectBtn.disabled = true
+      $('btn-connect-cancel').hidden = false
       try {
         out(
           $('out'),
@@ -1196,18 +1228,20 @@
         loginShowErr(e && e.message ? String(e.message) : 'Could not connect to Canary.')
       } finally {
         if (connectBtn) connectBtn.disabled = false
+        $('btn-connect-cancel').hidden = true
       }
     }
 
     // The background owns upload and completion so closing this popup cannot cancel tagging.
-    async function fileMessageToCaseInternal(ext, token, origin, caseId) {
-      const header = contextFilingMessageId ? await getContextFilingHeader(ext) : await getSingleMessageHeader(ext)
+    async function fileMessageToCaseInternal(ext, token, origin, caseId, messageId) {
+      const header = messageId != null ? await ext.messages.get(messageId) : null
       if (!header) throw new Error('Select a message to file.')
       const desc = mailDesc ? String(mailDesc.value || '').trim() : ''
       const response = await ext.runtime.sendMessage({
         type: 'canary-file-message-background', origin, caseId,
         messageId: normalizeMessageId(header.id),
         filename: sanitizeFilename(desc || mailItemSubjectFromHeader(header)) + '.eml',
+        folder: $('filing-folder').value, matterLabel: ($('case-selected') && $('case-selected').textContent) || '',
       })
       if (!response || !response.ok) throw new Error(response && response.detail || 'Could not file email.')
       return response.filed
@@ -1233,15 +1267,22 @@
         loginShowErr('')
         out($('out'), 'Sign-in cancelled. Connect again when ready.', false)
         if (connectBtn) connectBtn.disabled = false
+        $('btn-connect-cancel').hidden = true
       })
     }
 
+    $('btn-change-connection').onclick = async () => {
+      if (!await globalThis.canaryUi.review('Change connection?', ['Pending checks pause until you reconnect to the original account. Existing filings stay in Canary.'], 'Change connection')) return
+      await setJwt(ext, ''); setAuthPanels(false); $('apiOrigin').readOnly = false; $('apiOrigin').focus(); $('account-summary').textContent = 'Not connected'
+    }
     const btnLogout = $('btn-logout')
     if (btnLogout) {
       btnLogout.onclick = () => {
         void (async () => {
           try {
+            if (!await globalThis.canaryUi.review('Sign out of Canary?', ['Pending filing checks pause until you reconnect.'], 'Sign out')) return
             await setJwt(ext, '')
+            $('account-summary').textContent = 'Not connected'
             if (mailDesc) {
               mailDesc.value = ''
               delete mailDesc.dataset.userEdited
@@ -1323,10 +1364,13 @@
           const token = await getJwt(ext)
           const caseId = selectedCaseId
           if (!token || !caseId) return
-          out($('out'), 'Uploading message…', 'busy')
+          const messageId = filingMessageId
+          if (messageId == null) { out($('out'), 'Select an email before filing.', true); return }
+          if (possibleCopies.some(c => String(c.id) === caseId) && !await globalThis.canaryUi.review('File another copy?', ['Possible copies already exist on this matter. This will save an additional copy.'], 'File another copy')) return
+          out($('out'), 'Uploading message… You can close this panel.', 'busy')
           fileBtn.disabled = true
           try {
-            const filed = await fileMessageToCaseInternal(ext, token, origin, caseId)
+            const filed = await fileMessageToCaseInternal(ext, token, origin, caseId, messageId)
             if (mailDesc) { mailDesc.value = ''; delete mailDesc.dataset.userEdited }
             out($('out'), filed.scanState === 'blocked'
               ? 'Upload blocked by the security scan. The Canary tag was not applied.'

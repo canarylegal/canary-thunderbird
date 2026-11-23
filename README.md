@@ -1,6 +1,6 @@
 # Canary — file to matter
 
-Development candidate 1.5.44 adds background completion of Canary tags after upload scanning. Version 1.5.43 is published on the GitHub release channel. Source and distribution repository: `canarylegal/canary-thunderbird`. Actions remain disabled. Build this candidate with `npm run build`; building does not publish it. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
+Development candidate 1.5.45 implements the reviewed mail interface across filing, activity, connection settings, compose and attachments. Version 1.5.44 is published on the GitHub release channel. Source and distribution repository: `canarylegal/canary-thunderbird`. Actions remain disabled. Build this candidate with `npm run build`; building does not publish it. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
 
 ## Install and connect
 
@@ -46,3 +46,13 @@ The background page owns filing uploads and checks the exact uploaded file's met
 Pending checks pause while signed out or connected as another user/site, and resume after the original user reconnects. Before tagging, the extension checks the Thunderbird message identity to avoid applying a tag to a reused numeric message ID. Deleted or mismatched messages are not tagged. Pending entries expire after seven days. This does not reconstruct pending uploads from older extension versions, which never recorded that queue.
 
 Validation uses synthetic messages and server responses in isolation; it does not access live matter documents. Native Thunderbird restart/move behavior still determines whether an original message ID can be resolved after restart; the queue fails safely rather than tagging a different message.
+
+## Interface and draft review (1.5.45 candidate)
+
+Filing identifies the current email, groups possible copies by matter and requires confirmation before deliberately adding a copy to a matched matter. Selecting a matter does not automatically file an email. Recent destinations come only from current-account activity and are matched against the currently accessible matter list. Naming and folder choices are under Filing options.
+
+Recent activity is a local, account/site-scoped history of up to 100 entries retained for seven days. It distinguishes received uploads, pending/error/blocked scans, tagging retries and completed tags. Sent-message capture uses the same scan completion tracking. If Thunderbird only provides a synthetic sent-message snapshot without an actual message ID, activity reports successful filing without falsely claiming a tag. Existing uploads predating this history are not backfilled. Upload status is indeterminate; no fabricated percentage is shown.
+
+Compose now reviews the generated bundle before applying it. Recipients and subject are preserved by default; reply recipients remain unchanged. Body insertion appends to the current draft unless replacement is explicitly selected and reviewed. Changes made to the draft during review require a fresh review. Filing on send can be disabled independently. Applying a reply draft no longer silently uploads the incoming email; file that email through the filing action if desired.
+
+Attachments can be searched, selected and previewed; blocked/pending files cannot be selected. Preview uses authenticated metadata and content requests, permits only PDF, common raster images and plain text, and does not render arbitrary HTML. Unsupported types display an explanatory message. Native Thunderbird PDF rendering, external-browser authorization prompts and the native updater still require installed-client verification; browser fixtures do not substitute for these native checks.

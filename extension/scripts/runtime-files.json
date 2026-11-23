@@ -1,4 +1,6 @@
 [
+  "activity.html",
+  "activity.js",
   "background.js",
   "canary-shared.js",
   "canary-theme.css",
@@ -29,5 +31,7 @@
   "popup/popup.js",
   "site-permissions.js",
   "tag-apply.js",
+  "ui.css",
+  "ui.js",
   "web-bridge.js"
 ]

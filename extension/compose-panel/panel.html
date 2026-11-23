@@ -6,21 +6,22 @@
     <title>Canary compose</title>
     <link rel="stylesheet" href="../canary-theme.css" />
     <link rel="stylesheet" href="panel.css" />
+    <link rel="stylesheet" href="../ui.css" />
   </head>
   <body>
     <div class="wrap">
       <div class="pane-head">
-        <h1>Canary</h1>
+        <img class="brand-icon" src="../icons/icon32.png" alt=""><h1>Canary</h1>
         <button type="button" class="ghost" id="btn-close" hidden>Close</button>
       </div>
-      <p class="subhead">Link this e-mail to a matter and it will automatically save to the history.</p>
+      <p class="subhead">Prepare your draft, then review changes before applying.</p>
       <p id="prefill-hint" class="subhead prefill-hint" hidden>
         Reply or forward — search and select the matter below.
       </p>
       <p id="prefill-status" class="muted" hidden></p>
 
       <label class="field">
-        <span>Matter</span>
+        <span>Filing destination</span>
         <select id="matter-mode">
           <option value="pick" selected>Select matter…</option>
           <option value="none">None — do not file on send</option>
@@ -33,10 +34,12 @@
           <input type="search" id="case-search" spellcheck="false" placeholder="Type to search matters" autocomplete="off" />
         </label>
         <div id="case-results" class="case-results" hidden></div>
-        <p id="case-selected" class="muted"></p>
+        <div id="case-selected" class="matter-card" hidden></div><button type="button" class="link" id="compose-change-matter" hidden>Change matter</button>
       </div>
 
       <div id="matter-fields" hidden>
+<label class="check-row"><input id="file-on-send" type="checkbox" checked><span>File this email when sent</span></label>
+<details id="precedent-options"><summary>Precedent &amp; merge details</summary>
         <label class="field">
           <span>E-mail precedent (optional)</span>
           <select id="precedent"></select>
@@ -56,24 +59,29 @@
           </div>
           <p id="recipient-selected" class="muted"></p>
         </div>
+<label class="field"><span>Insert text</span><select id="body-mode"><option value="append">Below my existing draft</option><option value="replace">Replace my draft — review required</option></select></label>
+<label class="check-row"><input id="update-recipient" type="checkbox"><span>Use selected contact as the recipient (new messages only)</span></label>
+</details><details><summary>Filing folder</summary>
         <label class="field">
           <span>Save to folder</span>
           <select id="folder">
             <option value="">None (matter root)</option>
           </select>
         </label>
-        <div class="field" id="attach-section" hidden>
+        </details>
+<div class="field" id="attach-section" hidden>
           <span>Attachments from Canary</span>
-          <button type="button" class="secondary" id="btn-attach-from-file">Attach from file…</button>
-          <p id="attach-selected-summary" class="muted">No files selected for attach.</p>
+          <button type="button" class="secondary" id="btn-attach-from-file">Attach from Canary</button>
+          <p id="attach-selected-summary" class="muted">No Canary documents selected.</p>
         </div>
       </div>
 
       <div class="row-actions" id="main-actions">
-        <button type="button" class="primary" id="btn-apply">Apply to message</button>
+        <button type="button" class="primary" id="btn-apply">Review changes</button>
         <button type="button" class="ghost" id="btn-setup">Sign in…</button>
       </div>
-      <div id="out" role="status"></div>
+<p class="muted">Applying changes updates your draft. It does not send the email.</p>
+      <div id="out" role="status"></div><footer class="app-footer"><span>Canary compose</span><button class="link" data-activity>Recent activity</button></footer>
     </div>
 
     <!-- Inline attach picker (no separate window — avoids Thunderbird double-popup races). -->
@@ -83,6 +91,7 @@
         <button type="button" class="ghost" id="btn-attach-cancel">Cancel</button>
       </header>
       <p id="attach-matter-line" class="muted attach-matter-line"></p>
+      <label class="field"><span>Find a document</span><input id="attach-search" type="search" placeholder="Search document names"></label><p id="attach-status" role="status"></p><button class="ghost" id="attach-retry" hidden>Try again</button>
       <div id="attach-picker-root" class="attach-picker-root" role="listbox" aria-label="Case files"></div>
       <footer class="attach-picker-view-foot">
         <p id="attach-selection-line" class="muted">Click files to select (up to 25).</p>
@@ -93,6 +102,7 @@
     <script src="../compose-store.js"></script>
     <script src="../compose-attach-ui.js"></script>
     <script src="../compose-apply.js"></script>
+    <script src="../ui.js"></script>
     <script src="panel.js"></script>
   </body>
 </html>
