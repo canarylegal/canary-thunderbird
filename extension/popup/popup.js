@@ -1204,7 +1204,7 @@
         }
       }
       const uploaded = await uploadEml(token, origin, caseId, blob, parentName, imapRefs, internetMid || null)
-      return { header: header, fileId: uploaded && uploaded.id != null ? String(uploaded.id) : null }
+      return { header: header, fileId: uploaded && uploaded.id != null ? String(uploaded.id) : null, scanState: uploaded && uploaded.scan_state }
     }
 
     if (testBtn) testBtn.addEventListener('click', () => void testConnection())
@@ -1310,6 +1310,10 @@
           fileBtn.disabled = true
           try {
             const filed = await fileMessageToCaseInternal(ext, token, origin, caseId)
+            if (filed && filed.scanState && !['clean', 'unscanned'].includes(filed.scanState)) {
+              out($('out'), 'Uploaded to Canary: security check pending. Open the matter to see the result.', false)
+              return
+            }
             const header = filed && filed.header ? filed.header : filed
             const fileId = filed && filed.fileId != null ? filed.fileId : null
             if (ext.runtime && ext.runtime.sendMessage && header && header.id != null) {

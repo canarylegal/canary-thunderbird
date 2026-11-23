@@ -729,6 +729,9 @@
       internetMessageId: internetMid || null,
     })
     const fileId = uploaded && uploaded.id != null ? String(uploaded.id) : null
+    if (uploaded.scan_state && !['clean', 'unscanned'].includes(uploaded.scan_state)) {
+      return { header: header, fileId: fileId, scanState: uploaded.scan_state }
+    }
     await recordFiledTbMessage(ext, header.id, caseId, fileId, internetMid)
     if (opts.tag !== false) {
       await applyFiledTagForMessage(ext, header.id)
