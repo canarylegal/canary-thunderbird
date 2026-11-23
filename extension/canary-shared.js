@@ -765,7 +765,7 @@
     const raw = await ext.messages.getRaw(rawId)
     const blob = rawToBlob(raw)
     const subj = (header.subject && String(header.subject).trim()) || 'email'
-    const filename = sanitizeFilename(subj) + '.eml'
+    const filename = opts.filename ? sanitizeFilename(opts.filename) : sanitizeFilename(subj) + '.eml'
     const imapRefs = await resolveImapRefs(ext, header)
     let internetMid = header.headerMessageId ? String(header.headerMessageId).trim() : ''
     if (!internetMid && ext.messages && typeof ext.messages.getFull === 'function') {
@@ -788,7 +788,7 @@
       internetMessageId: internetMid || null,
     })
     const fileId = uploaded && uploaded.id != null ? String(uploaded.id) : null
-    if (uploaded.scan_state && !['clean', 'unscanned'].includes(uploaded.scan_state)) {
+    if (opts.deferCompletion || (uploaded.scan_state && !['clean', 'unscanned'].includes(uploaded.scan_state))) {
       return { header: header, fileId: fileId, scanState: uploaded.scan_state }
     }
     await recordFiledTbMessage(ext, header.id, caseId, fileId, internetMid)

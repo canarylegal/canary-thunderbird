@@ -1,6 +1,6 @@
 # Canary — file to matter
 
-Development candidate 1.5.42; requires the coordinated Canary CMS authorization callback update. Source and distribution repository: `canarylegal/canary-thunderbird`. This repository owns the Thunderbird extension source, regression tests, release packages and offline build tools. It contains no Canary CMS server source or Git history. The GitHub repository is public, Actions are disabled, and no GitHub Release has been published. The archived 1.5.36 XPI remains in the repository. Build the current review candidate with `npm run build`; the configured update feed is not live until GitHub Release assets are published. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
+Development candidate 1.5.44 adds background completion of Canary tags after upload scanning. Version 1.5.43 is published on the GitHub release channel. Source and distribution repository: `canarylegal/canary-thunderbird`. Actions remain disabled. Build this candidate with `npm run build`; building does not publish it. Extension source and tests live under `extension/`; server integration APIs remain in canarycms.
 
 ## Install and connect
 
@@ -38,3 +38,11 @@ Edit source in `extension/`, not inside release archives. Keep the add-on ID and
 See PUBLISHING.md for the unpublished release procedure and rollback approach. See LICENSE-NOTICE.txt before public release.
 
 Failed queued email opens stop after the attempt; they are not automatically requeued. Security-blocked files remain unavailable. Retry from Canary only after the underlying issue is resolved.
+
+## Tags after upload scanning
+
+The background page owns filing uploads and checks the exact uploaded file's metadata until it is clean (or accepted with scanning disabled). Closing the popup does not stop upload completion or tagging. The pending queue is stored locally, scoped to the Canary site and staff identity, and contains no bearer token. Temporary scan, connection and tag failures retry with backoff; blocked files, deleted files and revoked matter access never receive a new tag. Existing Thunderbird tags are preserved.
+
+Pending checks pause while signed out or connected as another user/site, and resume after the original user reconnects. Before tagging, the extension checks the Thunderbird message identity to avoid applying a tag to a reused numeric message ID. Deleted or mismatched messages are not tagged. Pending entries expire after seven days. This does not reconstruct pending uploads from older extension versions, which never recorded that queue.
+
+Validation uses synthetic messages and server responses in isolation; it does not access live matter documents. Native Thunderbird restart/move behavior still determines whether an original message ID can be resolved after restart; the queue fails safely rather than tagging a different message.

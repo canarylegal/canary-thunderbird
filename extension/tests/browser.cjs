@@ -26,7 +26,7 @@ async function page({signedIn=false,allowed=true,filingHints=false}={}){
    return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
   };
  },{signedIn,allowed,filingHints});
- await p.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin!=='https://extension.test')return route.abort();const f=path.join(root,decodeURIComponent(u.pathname));if(!f.startsWith(root+'/')||!fs.existsSync(f))return route.abort();return route.fulfill({path:f})});
+ await p.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin!=='https://extension.test')return route.abort();if(u.pathname==='/background-fixture.html')return route.fulfill({contentType:'text/html',body:'<html><body>Isolated background fixture</body></html>'});const f=path.join(root,decodeURIComponent(u.pathname));if(!f.startsWith(root+'/')||!fs.existsSync(f))return route.abort();return route.fulfill({path:f})});
  return p;
 }
 async function test(name,fn){try{await fn();results.push({name,status:'passed'});console.log('PASS',name)}catch(e){results.push({name,status:'failed',error:e.message});console.log('FAIL',name,e.message)}fs.writeFileSync(output+'/browser-results.json',JSON.stringify(results,null,2))}
@@ -48,5 +48,33 @@ async function test(name,fn){try{await fn();results.push({name,status:'passed'})
  await test('Normal setup tab stays open and requests permission on explicit Connect click',async()=>{const p=await page({allowed:false});await p.goto('https://extension.test/popup/popup.html?setup=1');await expect(p.locator('#block-setup')).toBeVisible();assert.equal(await p.evaluate(()=>permissionCalls.length),0);await p.locator('#btn-connect').click();await expect.poll(()=>p.evaluate(()=>permissionCalls.length)).toBe(1);assert.equal(await p.evaluate(()=>closedPopup),false);await p.close()});
  await test('Existing session can still open connection settings in normal tab',async()=>{const p=await page({signedIn:true});await p.goto('https://extension.test/popup/popup.html?setup=1');await expect(p.locator('#block-setup')).toBeVisible();await expect(p.locator('#auth-status')).toContainText('Signed in as demo@example.org');await p.close()});
  await test('Reused connection tab returns from filing to settings without reloading',async()=>{const p=await page({signedIn:true});await p.goto('https://extension.test/popup/popup.html?setup=1');await p.locator('#btn-filing-back').click();await expect(p.locator('#block-filing')).toBeVisible();await p.evaluate(()=>runtimeListeners.forEach(fn=>fn({type:'canary-show-connection-settings'})));await expect(p.locator('#block-setup')).toBeVisible();assert.equal(await p.evaluate(()=>permissionCalls.length),0);await p.close()});
+ await test('Real background completes filing and tags after the filing popup closes',async()=>{
+  const bg=await page({signedIn:true});await bg.goto('https://extension.test/background-fixture.html');
+  await bg.evaluate(()=>{
+   testData.canary_jwt='header.'+btoa(JSON.stringify({sub:'synthetic-user'}))+'.signature';
+   window.appliedTags=[];window.fixtureScan='pending';window.uploadStarted=false;
+   messenger.messages.get=async()=>({id:1,subject:'Synthetic welcome email',headerMessageId:'synthetic@example.org',tags:['existing']});
+   messenger.messages.tags={list:async()=>[{key:'canary',tag:'Canary'}],create:async()=>{throw Error('Already exists')}};
+   messenger.messages.update=async(id,patch)=>appliedTags.push({id,...patch});
+   window.fetch=async(url,opts)=>{
+    if(url.endsWith('/files')){window.uploadStarted=true;await new Promise(r=>window.finishUpload=r);return new Response(JSON.stringify({id:'uploaded-file',scan_state:'pending'}),{status:201})}
+    if(url.endsWith('/uploaded-file/metadata'))return new Response(JSON.stringify({id:'uploaded-file',scan_state:fixtureScan}),{status:200});
+    throw Error('Unexpected background request '+url);
+   };
+  });
+  for(const script of ['canary-shared.js','tag-apply.js','pending-file-tags.js'])await bg.addScriptTag({url:'https://extension.test/'+script});
+  const p=await page({signedIn:true});await p.exposeFunction('backgroundUpload',msg=>bg.evaluate(msg=>new Promise(resolve=>{for(const fn of runtimeListeners)if(fn(msg,null,resolve)===true)return;throw Error('No upload listener')}),msg));
+  await p.goto('https://extension.test/popup/popup.html');await p.evaluate(()=>{
+   const old=messenger.runtime.sendMessage;messenger.runtime.sendMessage=(msg,cb)=>msg.type==='canary-file-message-background'?window.backgroundUpload(msg):old(msg,cb);
+  });
+  await p.locator('#case-search').fill('Alex');await p.locator('#case-results button').first().click();await p.locator('#btn-file').click();
+  await expect.poll(()=>bg.evaluate(()=>uploadStarted)).toBe(true);await p.close();
+  await bg.evaluate(()=>finishUpload());await expect.poll(()=>bg.evaluate(()=>testData.canary_pending_file_tags_v1?.length)).toBe(1);
+  assert.deepEqual(await bg.evaluate(()=>appliedTags),[]);
+  await bg.evaluate(()=>{window.fixtureScan='clean';testData.canary_pending_file_tags_v1[0].next=0});
+  await bg.evaluate(()=>canaryPendingFileTags.tick());await expect.poll(()=>bg.evaluate(()=>appliedTags.length)).toBe(1);
+  assert.deepEqual(await bg.evaluate(()=>appliedTags[0]),{id:1,tags:['existing','canary']});
+  assert.equal(await bg.evaluate(()=>testData.canary_pending_file_tags_v1.length),0);await bg.close();
+ });
  await browser.close();process.exitCode=results.some(x=>x.status==='failed')?1:0;
 })().catch(e=>{console.error(e);process.exit(1)});

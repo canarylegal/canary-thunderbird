@@ -157,7 +157,7 @@
    * @param {number|undefined} messageId
    * @returns {Promise<{ ok: boolean, detail: string }>}
    */
-  async function canaryRunApplyFiledTag(messageId) {
+  async function canaryRunApplyFiledTag(messageId, options) {
     const id0 = normalizeMessageId(messageId)
     const g = getGecko()
     const m = g && g.messages
@@ -168,6 +168,7 @@
     const key = r0 && r0.key
     const tagErr = r0 && r0.err
     if (!key) {
+      if (options && options.strict) return { ok: false, detail: tagErr || 'Tag key unavailable' }
       try {
         await m.update(id0, { flagged: true })
         return {
@@ -188,6 +189,7 @@
       const msg = await m.get(id0)
       list = msg && Array.isArray(msg.tags) ? msg.tags.slice() : []
     } catch (e) {
+      if (options && options.strict) return { ok: false, detail: String(e) }
       list = []
     }
     if (list.indexOf(key) === -1) {
@@ -197,6 +199,7 @@
     try {
       await m.update(id0, { tags: list })
     } catch (e1) {
+      if (options && options.strict) return { ok: false, detail: String(e1) }
       var w1 = (e1 && e1.message) || String(e1)
       try {
         await m.update(id0, { tags: [key] })

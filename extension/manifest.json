@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Canary \u2014 file to matter",
-  "version": "1.5.43",
+  "version": "1.5.44",
   "description": "File mail to a matter; compose from a matter with merge and attachments; apply the Canary message tag.",
   "author": "Canary",
   "applications": {
@@ -34,6 +34,7 @@
       "filing-menu.js",
       "pending-eml-open.js",
       "site-permissions.js",
+      "pending-file-tags.js",
       "background.js"
     ]
   },

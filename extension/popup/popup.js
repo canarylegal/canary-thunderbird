@@ -1199,79 +1199,18 @@
       }
     }
 
-    async function uploadEml(token, origin, caseId, blob, filename, imapRefs, internetMessageId) {
-      const fd = new FormData()
-      fd.append('upload', blob, filename)
-      fd.append('folder', '')
-      if (imapRefs && imapRefs.mbox) fd.append('source_imap_mbox', imapRefs.mbox)
-      if (imapRefs && imapRefs.uid) fd.append('source_imap_uid', imapRefs.uid)
-      if (internetMessageId) fd.append('source_internet_message_id', internetMessageId)
-
-      const res = await globalThis.canaryShared.secureFetch(apiRoot(origin) + '/cases/' + encodeURIComponent(caseId) + '/files', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token },
-        body: fd,
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) {
-        const detail = body && typeof body === 'object' && body.detail
-        const msg = typeof detail === 'string' ? detail : 'Upload failed (' + res.status + ')'
-        throw new Error(msg)
-      }
-      if (!body || typeof body !== 'object' || !body.id) {
-        throw new Error('Upload succeeded but no file id returned.')
-      }
-      return body
-    }
-
-    /**
-     * @returns {Promise<object>} MessageHeader
-     */
+    // The background owns upload and completion so closing this popup cannot cancel tagging.
     async function fileMessageToCaseInternal(ext, token, origin, caseId) {
-      if (!ext.messages || typeof ext.messages.getRaw !== 'function') {
-        throw new Error('messages.getRaw is not available in this build.')
-      }
-      let header = null
-      if (contextFilingMessageId) {
-        header = await getContextFilingHeader(ext)
-      }
-      if (!header) {
-        header = await getSingleMessageHeader(ext)
-      }
-      if (header.headersOnly) {
-        throw new Error('Message body not downloaded; wait for the message to load fully, then try again.')
-      }
-      const rawId = normalizeMessageId(header.id)
-      if (rawId == null) {
-        throw new Error('Invalid message id for filing.')
-      }
-      const raw = await ext.messages.getRaw(rawId)
-      const blob = rawToBlob(raw)
-      const descRaw = mailDesc ? String(mailDesc.value || '').trim() : ''
-      const displayBase = descRaw || mailItemSubjectFromHeader(header)
-      const parentName = sanitizeFilename(displayBase) + '.eml'
-      const imapRefs = await resolveImapRefs(ext, header)
-      let internetMid = header.headerMessageId ? String(header.headerMessageId).trim() : ''
-      if (!internetMid && ext.messages && typeof ext.messages.getFull === 'function') {
-        try {
-          const full = await ext.messages.getFull(rawId, { decodeHeaders: true })
-          const hdrs = full && full.headers
-          if (hdrs && typeof hdrs === 'object') {
-            const keys = Object.keys(hdrs)
-            for (let i = 0; i < keys.length; i++) {
-              if (String(keys[i]).toLowerCase() === 'message-id') {
-                const v = hdrs[keys[i]]
-                internetMid = Array.isArray(v) ? String(v[0] || '').trim() : String(v || '').trim()
-                break
-              }
-            }
-          }
-        } catch (_) {
-          /* optional */
-        }
-      }
-      const uploaded = await uploadEml(token, origin, caseId, blob, parentName, imapRefs, internetMid || null)
-      return { header: header, fileId: uploaded && uploaded.id != null ? String(uploaded.id) : null, scanState: uploaded && uploaded.scan_state }
+      const header = contextFilingMessageId ? await getContextFilingHeader(ext) : await getSingleMessageHeader(ext)
+      if (!header) throw new Error('Select a message to file.')
+      const desc = mailDesc ? String(mailDesc.value || '').trim() : ''
+      const response = await ext.runtime.sendMessage({
+        type: 'canary-file-message-background', origin, caseId,
+        messageId: normalizeMessageId(header.id),
+        filename: sanitizeFilename(desc || mailItemSubjectFromHeader(header)) + '.eml',
+      })
+      if (!response || !response.ok) throw new Error(response && response.detail || 'Could not file email.')
+      return response.filed
     }
 
     if (testBtn) testBtn.addEventListener('click', () => void testConnection())
@@ -1388,45 +1327,10 @@
           fileBtn.disabled = true
           try {
             const filed = await fileMessageToCaseInternal(ext, token, origin, caseId)
-            if (filed && filed.scanState && !['clean', 'unscanned'].includes(filed.scanState)) {
-              out($('out'), 'Uploaded to Canary: security check pending. Open the matter to see the result.', false)
-              return
-            }
-            const header = filed && filed.header ? filed.header : filed
-            const fileId = filed && filed.fileId != null ? filed.fileId : null
-            if (ext.runtime && ext.runtime.sendMessage && header && header.id != null) {
-              await new Promise(function (resolve) {
-                ext.runtime.sendMessage(
-                  {
-                    type: 'canary-record-filed-message',
-                    tbMessageId: header.id,
-                    caseId: caseId,
-                    fileId: fileId,
-                    internetMessageId: header.headerMessageId || null,
-                  },
-                  function () {
-                    resolve()
-                  },
-                )
-              })
-            }
-            if (mailDesc) {
-              mailDesc.value = ''
-              delete mailDesc.dataset.userEdited
-            }
-            await syncMailDescriptionField(ext)
-            const tagResult = await applyCanaryFiledTagFromBackground(
-              ext,
-              normalizeMessageId(header.id),
-            )
-            let msg = 'Saved to Canary. The “Canary” message tag should appear in the thread list (turn on the Tags column if you use it).'
-            if (tagResult && tagResult.ok && tagResult.detail) {
-              msg = 'Saved to Canary. ' + tagResult.detail
-            } else if (tagResult && !tagResult.ok && tagResult.detail) {
-              msg = 'Saved to Canary. (Marking: ' + tagResult.detail + ')'
-            }
-            out($('out'), msg, false)
-            await refreshLinkedCaseBanner(ext, token, origin)
+            if (mailDesc) { mailDesc.value = ''; delete mailDesc.dataset.userEdited }
+            out($('out'), filed.scanState === 'blocked'
+              ? 'Upload blocked by the security scan. The Canary tag was not applied.'
+              : 'Uploaded to Canary. The Canary tag will be added after the security check succeeds. You can close this popup.', false)
           } catch (e) {
             out($('out'), e && e.message ? String(e.message) : 'Failed.', true)
           } finally {
