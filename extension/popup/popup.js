@@ -44,6 +44,10 @@
     }
   }
 
+  const isSetupTab = new URLSearchParams(search).get('setup') === '1'
+
+  if (isSetupTab) document.documentElement.classList.add('canary-setup-tab')
+
   const ORIGIN_KEY = 'canaryApiOrigin'
   const JWT_KEY = 'canary_jwt'
   /** @type {Array<{ id: unknown, case_number?: unknown, client_name?: unknown, matter_description?: unknown }>} */
@@ -54,7 +58,7 @@
   /** Last message id we refreshed the filing banner for (context filing reuses one window). */
   let contextFilingLoadedForMessageId = null
   /** If true, user opened “Server & sign-in” while a session is valid. When not signed in, the server block is always shown. */
-  let settingsOpen = false
+  let settingsOpen = isSetupTab
 
   function getExt() {
     return globalThis.messenger || globalThis.browser
@@ -879,9 +883,31 @@
     const backFilingWrap = $('setup-filing-back-wrap')
     const mailDesc = $('mail-description')
 
+    let openingSetup = false
+    async function openSetupTab() {
+      if (openingSetup) return
+      openingSetup = true
+      try {
+        const params = new URLSearchParams(search)
+        const selected = await getSingleMessageHeaderOrError(ext).catch(() => null)
+        if (selected && selected.header) {
+          params.set('contextFiling', '1')
+          params.set('messageId', String(selected.header.id))
+        }
+        if (originInput && originInput.value) params.set('site', originInput.value)
+        const result = await ext.runtime.sendMessage({ type: 'canary-open-connection-settings', query: params.toString() })
+        if (!result || !result.ok) throw new Error(result && result.detail || 'Could not open connection settings.')
+        globalThis.close()
+      } catch (e) {
+        openingSetup = false
+        out(outEl, e.message, true)
+      }
+    }
+
     async function syncBlockVisibility() {
       const ready = await isSessionReady(ext)
       const showServer = !ready || settingsOpen
+      if (showServer && !isSetupTab) { void openSetupTab(); return }
       if (blockSetup) blockSetup.hidden = !showServer
       if (blockFiling) blockFiling.hidden = showServer
       if (backFilingWrap) backFilingWrap.hidden = !(ready && settingsOpen)
@@ -910,6 +936,16 @@
       return
     }
 
+    if (isSetupTab && ext.runtime.onMessage) {
+      ext.runtime.onMessage.addListener(message => {
+        if (message && message.type === 'canary-show-connection-settings') {
+          settingsOpen = true
+          void syncBlockVisibility()
+        }
+      })
+      const companionLink = $('companion-launch-wrap')
+      if (companionLink) companionLink.hidden = true
+    }
     void syncBlockVisibility()
 
     if (contextFilingMessageId) {
@@ -921,7 +957,7 @@
     ext.storage.local
       .get(ORIGIN_KEY)
       .then((obj) => {
-        const o = (obj && obj[ORIGIN_KEY]) || ''
+        const o = new URLSearchParams(search).get('site') || (obj && obj[ORIGIN_KEY]) || ''
         if (originInput && o) {
           originInput.value = o
           void globalThis.canaryShared.primeSitePermission(ext, o).catch(function () {})
@@ -957,6 +993,7 @@
     })
 
     async function testConnection() {
+      if (!isSetupTab) return openSetupTab()
       if (!originInput) return
       if (siteSetupController) siteSetupController.abort()
       const controller = new AbortController()
@@ -1102,6 +1139,7 @@
     }
 
     async function connectToCanary() {
+      if (!isSetupTab) return openSetupTab()
       loginShowErr('')
       out($('out'), '', false)
       const origin = readOriginFromInput()
@@ -1282,6 +1320,7 @@
     const btnOpenSetup = $('btn-open-setup')
     if (btnOpenSetup) {
       btnOpenSetup.onclick = () => {
+        if (!isSetupTab) { void openSetupTab(); return }
         settingsOpen = true
         void syncBlockVisibility()
       }
@@ -1407,7 +1446,7 @@
       const t = await getJwt(ext)
       const o = await requireOrigin(ext)
       if (t && o) {
-        settingsOpen = false
+        settingsOpen = isSetupTab
         await refreshAuthAndCases(ext, o, {})
         if (contextFilingMessageId) {
           contextFilingLoadedForMessageId = null

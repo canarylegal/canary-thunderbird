@@ -10,6 +10,38 @@
     return globalThis.messenger || globalThis.browser
   }
 
+  // Keep permission prompts outside toolbar popups; reuse a normal content tab.
+  var connectionTabId = null
+  var connectionTabOpening = null
+  globalThis.canaryOpenConnectionTab = function (query) {
+    if (connectionTabOpening) return connectionTabOpening
+    const ext = getGecko()
+    const params = new URLSearchParams(query || '')
+    const safe = new URLSearchParams({ setup: '1' })
+    for (const key of ['messageId', 'contextFiling', 'site']) {
+      if (params.has(key)) safe.set(key, params.get(key))
+    }
+    const url = ext.runtime.getURL('popup/popup.html?' + safe.toString())
+    connectionTabOpening = (async function () {
+      if (connectionTabId != null) {
+        try {
+          const tab = await ext.tabs.get(connectionTabId)
+          // Do not overwrite a tab that has navigated away from our setup page.
+          if (tab.url && tab.url.startsWith(ext.runtime.getURL('popup/popup.html?'))) {
+            await ext.tabs.update(connectionTabId, { active: true })
+            await ext.windows.update(tab.windowId, { focused: true })
+            await ext.runtime.sendMessage({ type: 'canary-show-connection-settings' })
+            return { ok: true }
+          }
+        } catch (_) { /* closed tab: create a replacement */ }
+      }
+      const tab = await ext.tabs.create({ url, active: true })
+      connectionTabId = tab.id
+      return { ok: true }
+    })().finally(function () { connectionTabOpening = null })
+    return connectionTabOpening
+  }
+
   /** Reload an extension pop-up window so popup JS re-runs for a new message/context. */
   function navigateExtensionWindowToUrl(ext, windowId, url) {
     if (!ext.tabs || typeof ext.tabs.query !== 'function' || typeof ext.tabs.update !== 'function') {

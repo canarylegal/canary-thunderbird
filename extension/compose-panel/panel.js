@@ -977,7 +977,7 @@
     })
 
     $('btn-setup').addEventListener('click', () => {
-      void ext.runtime.sendMessage({ type: 'canary-open-companion' })
+      void ext.runtime.sendMessage({ type: 'canary-open-connection-settings' }).then(r => { if (r && r.ok) globalThis.close() })
     })
 
     const btnAttach = $('btn-attach-from-file')

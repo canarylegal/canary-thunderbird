@@ -49,6 +49,11 @@
       handleApplyFiledTag(message, sendResponse)
       return true
     }
+    if (message && message.type === 'canary-open-connection-settings') {
+      globalThis.canaryOpenConnectionTab(message.query).then(sendResponse,
+        e => sendResponse({ ok: false, detail: e.message }))
+      return true
+    }
     if (message && message.type === 'canary-open-companion') {
       void (async function () {
         try {

@@ -304,3 +304,7 @@ input[type='search'] {
   color: #475569;
   font-style: italic;
 }
+
+/* A full Thunderbird tab gives host-permission prompts room to remain visible. */
+html.canary-setup-tab { max-width: none; width: 100%; }
+html.canary-setup-tab body { max-width: 640px; margin: 24px auto; }
